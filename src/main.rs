@@ -3,6 +3,7 @@ use crate::sockets::read_entries;
 #[cfg(target_os = "macos")]
 use crate::sockets::read_entries_mac;
 
+mod parse;
 mod sockets;
 
 fn main() {
