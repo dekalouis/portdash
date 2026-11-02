@@ -52,6 +52,7 @@ Tutoring is about the stage tasks. These do not need a ladder, so just answer th
 - Do not reveal what comes in later stages unless I ask. A short "a later stage covers this" is fine.
 - Do not pad with praise. Say clearly when something is right, and just as clearly when it is wrong.
 - Do not pretend to know. Check the docs or run a command on my machine when you are unsure.
+- Only talk about the OS we are on now. On Linux, do not mention verifying or testing on the Mac, and on a Mac, do not mention verifying on Linux. Bring up the other OS only if I do.
 
 ## Keep me honest
 

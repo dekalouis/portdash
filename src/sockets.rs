@@ -1,16 +1,16 @@
 #[cfg(target_os = "linux")]
 use std::fs;
-use std::{
-    io,
-    process::{Command, Stdio},
-};
+use std::io;
+#[cfg(target_os = "macos")]
+use std::process::{Command, Stdio};
 
 #[cfg(target_os = "linux")]
-pub fn read_entries(path: &str) -> io::Result<Vec<String>> {
-    let contents = fs::read_to_string(path)?;
+pub fn read_entries() -> io::Result<Vec<String>> {
+    let contents = fs::read_to_string("/proc/net/tcp")?;
     Ok(contents.lines().skip(1).map(str::to_string).collect())
 }
 
+#[cfg(target_os = "macos")]
 pub fn read_entries_mac() -> io::Result<String> {
     let output = Command::new("/usr/sbin/lsof")
         .args(["-nP", "-iTCP", "-sTCP:LISTEN", "-FpcuRtdn"])
