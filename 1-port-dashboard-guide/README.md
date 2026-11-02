@@ -67,6 +67,7 @@ You write the code. Each stage explains the concept, sets a task, and shows one 
 
 ### Part 3: A useful CLI (your first shippable version)
 
+- [ ] [Stage 8a: Readable errors](stages/08a-readable-errors.md) (Easy, special stage)
 - [ ] [Stage 9: The list command](stages/09-list-command.md) (Medium)
 - [ ] [Stage 10: The kill command](stages/10-kill-command.md) (Medium)
 

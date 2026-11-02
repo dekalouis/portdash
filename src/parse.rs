@@ -1,41 +1,59 @@
+/// One row of /proc/net/tcp with only the fields used
 #[derive(PartialEq, Debug)]
 pub struct TcpEntry {
+    /// Local IP address as the raw hex text from the file (decoded in Stage 4).
     pub local_address: String,
+    /// Local port, converted from hex.
     pub port: u16,
+    /// Connection state code, converted from hex (`0x0A` is LISTEN).
     pub state: u8,
+    /// Owner's user ID. Decimal in the file.
     pub uid: u32,
+    /// Socket inode. Decimal in the file.
     pub inode: u64,
 }
 
+// TODO: implement `Display` for readable messages (Stage 8a).
 #[derive(PartialEq, Debug)]
 pub enum ParseError {
     MissingField(&'static str),
-    BadNumber(String),
+    BadNumber { field: &'static str, text: String },
 }
 
+/// Parses one data line of `/proc/net/tcp` (not the header).
+///
+/// Fields are split on whitespace. The row number is skipped. Returns
+/// `MissingField` if the line is too short, and `BadNumber` if a number is
+/// malformed.
 pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     let fields: Vec<&str> = line.split_whitespace().collect();
-    let raw_address = fields
-        .get(1)
-        .ok_or(ParseError::MissingField("raw_address"))?;
-    let (address, port) = raw_address
+
+    let raw_address = fields.get(1).ok_or(ParseError::MissingField("address"))?;
+    let (address, raw_port) = raw_address
         .split_once(":")
         .ok_or(ParseError::MissingField("port"))?;
-    let port =
-        u16::from_str_radix(port, 16).map_err(|_| ParseError::BadNumber(port.to_string()))?;
+    let port = u16::from_str_radix(raw_port, 16).map_err(|_| ParseError::BadNumber {
+        field: "port",
+        text: raw_port.to_string(),
+    })?;
+
     let raw_state = fields.get(3).ok_or(ParseError::MissingField("state"))?;
-    let state = u8::from_str_radix(raw_state, 16)
-        .map_err(|_| ParseError::BadNumber(raw_state.to_string()))?;
-    let uid: u32 = fields
-        .get(7)
-        .ok_or(ParseError::MissingField("uid"))?
-        .parse()
-        .map_err(|_| ParseError::BadNumber("uid".to_string()))?;
-    let inode: u64 = fields
-        .get(9)
-        .ok_or(ParseError::MissingField("inode"))?
-        .parse()
-        .map_err(|_| ParseError::BadNumber("inode".to_string()))?;
+    let state = u8::from_str_radix(raw_state, 16).map_err(|_| ParseError::BadNumber {
+        field: "state",
+        text: raw_state.to_string(),
+    })?;
+
+    let raw_uid = fields.get(7).ok_or(ParseError::MissingField("uid"))?;
+    let uid: u32 = raw_uid.parse().map_err(|_| ParseError::BadNumber {
+        field: "uid",
+        text: raw_uid.to_string(),
+    })?;
+
+    let raw_inode = fields.get(9).ok_or(ParseError::MissingField("inode"))?;
+    let inode: u64 = raw_inode.parse().map_err(|_| ParseError::BadNumber {
+        field: "inode",
+        text: raw_inode.to_string(),
+    })?;
 
     Ok(TcpEntry {
         local_address: address.to_string(),
@@ -50,9 +68,11 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
 mod tests {
     use super::*;
 
+    const GOOD_LINE: &str = "1: 0100007F:C0DE 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 492943 1 0000000015983799 100 0 0 10 0";
+
     #[test]
     fn parses_a_good_line() {
-        let tcp_entry = parse_socket("1: 0100007F:C0DE 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 492943 1 0000000015983799 100 0 0 10 0").unwrap();
+        let tcp_entry = parse_socket(GOOD_LINE).unwrap();
         assert_eq!(tcp_entry.local_address, "0100007F");
         assert_eq!(tcp_entry.port, 49374);
         assert_eq!(tcp_entry.state, 10);
@@ -82,16 +102,16 @@ mod tests {
             parse_socket(
                 "1: 0100007F:ZZZZ 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 492943 1 0000000015983799 100 0 0 10 0"
             ),
-            Err(ParseError::BadNumber(String::from("ZZZZ")))
+            Err(ParseError::BadNumber {
+                field: "port",
+                text: String::from("ZZZZ")
+            })
         );
     }
 
     #[test]
     fn rejects_empty_string() {
-        assert_eq!(
-            parse_socket(""),
-            Err(ParseError::MissingField("raw_address"))
-        );
+        assert_eq!(parse_socket(""), Err(ParseError::MissingField("address")));
     }
 
     #[test]
@@ -100,7 +120,10 @@ mod tests {
             parse_socket(
                 "1: 0100007F:C0DE 00000000:0000 0Z 00000000:00000000 00:00000000 00000000  1000        0 492943 1 0000000015983799 100 0 0 10 0"
             ),
-            Err(ParseError::BadNumber(String::from("0Z")))
+            Err(ParseError::BadNumber {
+                field: "state",
+                text: String::from("0Z")
+            })
         );
     }
 
@@ -110,7 +133,10 @@ mod tests {
             parse_socket(
                 "1: 0100007F:C0DE 00000000:0000 0A 00000000:00000000 00:00000000 00000000  abc        0 492943 1 0000000015983799 100 0 0 10 0"
             ),
-            Err(ParseError::BadNumber(String::from("uid")))
+            Err(ParseError::BadNumber {
+                field: "uid",
+                text: String::from("abc")
+            })
         );
     }
 
@@ -121,7 +147,10 @@ mod tests {
             parse_socket(
                 "1: 0100007F:C0DE 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 49A943 1 0000000015983799 100 0 0 10 0"
             ),
-            Err(ParseError::BadNumber(String::from("inode")))
+            Err(ParseError::BadNumber {
+                field: "inode",
+                text: String::from("49A943")
+            })
         );
     }
 

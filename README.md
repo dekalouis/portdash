@@ -16,3 +16,7 @@ cargo run
 ```
 
 On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. Without `sudo`, only your own user's ports are visible.
+
+## Debug output
+
+The output is temporary for now. It prints with `{:?}`, Rust's `Debug` format, which is meant for me. Stage 8a of the guide replaces it with proper `Display` messages.
