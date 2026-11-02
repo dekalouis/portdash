@@ -1,17 +1,21 @@
+use crate::sockets::read_entries_mac;
+
+mod sockets;
+
 fn main() {
-    println!("{}", greeting("reader"));
-}
-
-fn greeting(name: &str) -> String {
-    format!("Hello, {name}!")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn greets_by_name() {
-        assert_eq!(greeting("Deka"), "Hello, Deka!");
+    match read_entries_mac() {
+        Ok(entries) => {
+            // println!("{}", entries);
+            let log = entries;
+            for line in log.lines() {
+                println!("{}", line)
+            }
+            let comments = log.lines().filter(|line| line.starts_with('n')).count();
+            println!("{}", comments);
+        }
+        Err(err) => {
+            eprintln!("could not read sockets: {err}");
+            std::process::exit(1);
+        }
     }
 }
