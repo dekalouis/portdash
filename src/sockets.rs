@@ -5,9 +5,8 @@ use std::io;
 use std::process::{Command, Stdio};
 
 #[cfg(target_os = "linux")]
-pub fn read_entries() -> io::Result<Vec<String>> {
-    let contents = fs::read_to_string("/proc/net/tcp")?;
-    Ok(contents.lines().skip(1).map(str::to_string).collect())
+pub fn read_entries() -> io::Result<String> {
+    fs::read_to_string("/proc/net/tcp")
 }
 
 #[cfg(target_os = "macos")]

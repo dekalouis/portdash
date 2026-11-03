@@ -89,6 +89,27 @@ fn parse_hex_to_ipv4(address: &str) -> Result<Ipv4Addr, ParseError> {
     Ok(Ipv4Addr::from(raw.to_ne_bytes()))
 }
 
+pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
+    let split = text.lines().skip(1);
+    let mut res = Vec::new();
+    for line in split {
+        let parsed = parse_socket(line);
+        if let Ok(entry) = parsed {
+            res.push(entry);
+        }
+    }
+    res
+}
+
+pub fn filter_listeners(list: Vec<TcpEntry>) -> Vec<TcpEntry> {
+    let mut listeners: Vec<TcpEntry> = list
+        .into_iter()
+        .filter(|entry| entry.state == 0x0A)
+        .collect();
+    listeners.sort_by_key(|entry| entry.port);
+    listeners
+}
+
 #[cfg(target_os = "macos")]
 pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
     let mut pid: Option<u32> = None;
