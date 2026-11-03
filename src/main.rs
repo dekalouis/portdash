@@ -53,7 +53,7 @@ fn main() {
                 }
             }
             let comments = entries.len();
-            println!("{}", comments);
+            println!("count {}, actual {}", comments, entries.len());
         }
         Err(err) => {
             eprintln!("could not read sockets: {err}");

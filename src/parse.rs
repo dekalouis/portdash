@@ -1,9 +1,11 @@
+use std::net::Ipv4Addr;
+
 /// One row of /proc/net/tcp with only the fields used
 #[cfg(target_os = "linux")]
 #[derive(PartialEq, Debug)]
 pub struct TcpEntry {
     /// Local IP address as the raw hex text from the file (decoded in Stage 4).
-    pub local_address: String,
+    pub local_address: Ipv4Addr,
     /// Local port, converted from hex.
     pub port: u16,
     /// Connection state code, converted from hex (`0x0A` is LISTEN).
@@ -71,12 +73,20 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     })?;
 
     Ok(TcpEntry {
-        local_address: address.to_string(),
+        local_address: parse_hex_to_ipv4(address)?,
         port,
         state,
         uid,
         inode,
     })
+}
+
+fn parse_hex_to_ipv4(address: &str) -> Result<Ipv4Addr, ParseError> {
+    let raw = u32::from_str_radix(address, 16).map_err(|_| ParseError::BadNumber {
+        field: "address",
+        text: address.to_string(),
+    })?;
+    Ok(Ipv4Addr::from(raw.to_ne_bytes()))
 }
 
 #[cfg(target_os = "macos")]
@@ -149,7 +159,7 @@ mod tests {
     #[test]
     fn parses_a_good_line() {
         let tcp_entry = parse_socket(GOOD_LINE).unwrap();
-        assert_eq!(tcp_entry.local_address, "0100007F");
+        assert_eq!(tcp_entry.local_address, Ipv4Addr::new(127, 0, 0, 1));
         assert_eq!(tcp_entry.port, 49374);
         assert_eq!(tcp_entry.state, 10);
         assert_eq!(tcp_entry.uid, 1000);
@@ -159,7 +169,7 @@ mod tests {
     #[test]
     fn parses_a_second_line() {
         let tcp_entry = parse_socket("0: 3500007F:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000   975        0 15411 1 0000000083f5dc00 100 0 0 10 5").unwrap();
-        assert_eq!(tcp_entry.local_address, "3500007F");
+        assert_eq!(tcp_entry.local_address, Ipv4Addr::new(127, 0, 0, 53));
         assert_eq!(tcp_entry.port, 53);
         assert_eq!(tcp_entry.state, 10);
     }
@@ -237,6 +247,35 @@ mod tests {
                 "1: 0100007FC0DE 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 492943 1 0000000015983799 100 0 0 10 0"
             ),
             Err(ParseError::MissingField("port"))
+        );
+    }
+
+    #[test]
+    fn parse_ip_address_1() {
+        let parsed_address = parse_hex_to_ipv4("0100007F").unwrap();
+        assert_eq!(parsed_address, Ipv4Addr::new(127, 0, 0, 1));
+    }
+
+    #[test]
+    fn parse_ip_address_2() {
+        let parsed_address = parse_hex_to_ipv4("3500007F").unwrap();
+        assert_eq!(parsed_address, Ipv4Addr::new(127, 0, 0, 53));
+    }
+
+    #[test]
+    fn parse_ip_address_3() {
+        let parsed_address = parse_hex_to_ipv4("00000000").unwrap();
+        assert_eq!(parsed_address, Ipv4Addr::new(0, 0, 0, 0));
+    }
+
+    #[test]
+    fn parse_ip_address_fail() {
+        assert_eq!(
+            parse_hex_to_ipv4("ZZZZZZZZ"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("ZZZZZZZZ"),
+            })
         );
     }
 }
