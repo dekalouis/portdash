@@ -320,6 +320,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn does_not_leak_fields_between_processes() {
         let entries = parse_lsof(
             "p1593\n\
@@ -344,9 +345,16 @@ mod tests {
              n127.0.0.1:49374\n",
         )
         .unwrap();
-        todo!("assert on entries[2]: pid, cmd_name, port, socket_id")
+        assert_eq!(entries.len(), 3);
+        let opencode = &entries[2];
+        assert_eq!(opencode.pid, 28161);
+        assert_eq!(opencode.cmd_name, "opencode");
+        assert_eq!(opencode.family, "IPv4");
+        assert_eq!(opencode.socket_id, "0x28282d27564c8a55");
+        assert_eq!(opencode.port, 49374);
     }
 
+    #[test]
     fn keeps_a_name_with_a_space() {
         let entries = parse_lsof(
             "p28161\n\
@@ -359,9 +367,11 @@ mod tests {
              n127.0.0.1:49374\n",
         )
         .unwrap();
-        todo!("assert on cmd_name")
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].cmd_name, "LM Studio");
     }
 
+    #[test]
     fn rejects_a_bad_port() {
         let result = parse_lsof(
             "p28161\n\
@@ -373,14 +383,22 @@ mod tests {
              d0x28282d27564c8a55\n\
              n127.0.0.1:ZZZZ\n",
         );
-        todo!("assert on result")
+        assert_eq!(
+            result,
+            Err(ParseError::BadNumber {
+                field: "port",
+                text: String::from("ZZZZ")
+            })
+        );
     }
 
+    #[test]
     fn returns_empty_list_for_empty_string() {
         let entries = parse_lsof("").unwrap();
-        todo!("assert on entries")
+        assert!(entries.is_empty());
     }
 
+    #[test]
     fn rejects_a_socket_with_no_process() {
         let result = parse_lsof(
             "f7\n\
@@ -388,6 +406,6 @@ mod tests {
              d0x28282d27564c8a55\n\
              n127.0.0.1:49374\n",
         );
-        todo!("assert on result")
+        assert_eq!(result, Err(ParseError::MissingField("pid")));
     }
 }
