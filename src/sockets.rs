@@ -11,7 +11,7 @@ pub fn read_entries() -> io::Result<Vec<String>> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn read_entries_mac() -> io::Result<String> {
+pub fn run_lsof() -> io::Result<String> {
     let output = Command::new("/usr/sbin/lsof")
         .args(["-nP", "-iTCP", "-sTCP:LISTEN", "-FpcuRtdn"])
         .stdin(Stdio::null())

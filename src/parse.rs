@@ -1,4 +1,5 @@
 /// One row of /proc/net/tcp with only the fields used
+#[cfg(target_os = "linux")]
 #[derive(PartialEq, Debug)]
 pub struct TcpEntry {
     /// Local IP address as the raw hex text from the file (decoded in Stage 4).
@@ -13,6 +14,19 @@ pub struct TcpEntry {
     pub inode: u64,
 }
 
+#[cfg(target_os = "macos")]
+#[derive(PartialEq, Debug)]
+pub struct LsofEntry {
+    pub pid: u32,
+    pub parent_pid: u32,
+    pub cmd_name: String,
+    pub uid: u32,
+    pub family: String,
+    pub socket_id: String,
+    pub raw_address: String,
+    pub port: u16,
+}
+
 // TODO: implement `Display` for readable messages (Stage 8a).
 #[derive(PartialEq, Debug)]
 pub enum ParseError {
@@ -25,6 +39,7 @@ pub enum ParseError {
 /// Fields are split on whitespace. The row number is skipped. Returns
 /// `MissingField` if the line is too short, and `BadNumber` if a number is
 /// malformed.
+#[cfg(target_os = "linux")]
 pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     let fields: Vec<&str> = line.split_whitespace().collect();
 
@@ -64,6 +79,46 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     })
 }
 
+#[cfg(target_os = "macos")]
+pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, String> {
+    let mut pid = String::new();
+    let mut parent_pid = String::new();
+    let mut cmd_name = String::new();
+    let mut uid = String::new();
+    let mut family = String::new();
+    let mut socket_id = String::new();
+    let mut raw_address = String::new();
+    let mut entries = Vec::new();
+
+    for line in text.lines() {
+        let mut chars = line.chars();
+        let Some(tag) = chars.next() else { continue };
+        let value = chars.as_str();
+        match tag {
+            'p' => {
+                pid = value.parse().map_err(|_| ParseError::BadNumber {
+                    field: "pid",
+                    text: pid.to_string(),
+                })?
+            }
+            'R' => parent_pid = value.to_string(),
+            'c' => cmd_name = value.to_string(),
+            'u' => uid = value.to_string(),
+            'f' => {
+                family = String::new();
+                socket_id = String::new();
+                raw_address = String::new();
+            }
+            't' => family = value.to_string(),
+            'd' => socket_id = value.to_string(),
+            'n' => raw_address = value.to_string(),
+            _ => {}
+        }
+    }
+    Ok(entries)
+}
+
+#[cfg(target_os = "linux")]
 #[cfg(test)]
 mod tests {
     use super::*;

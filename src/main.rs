@@ -3,14 +3,14 @@ use crate::parse::parse_socket;
 use crate::sockets::read_entries;
 
 #[cfg(target_os = "macos")]
-use crate::sockets::read_entries_mac;
+use crate::sockets::run_lsof;
 
 mod parse;
 mod sockets;
 
 fn main() {
     #[cfg(target_os = "macos")]
-    match read_entries_mac() {
+    match run_lsof() {
         Ok(entries) => {
             let log = entries;
             for line in log.lines() {
