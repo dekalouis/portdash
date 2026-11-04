@@ -8,8 +8,16 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 
 - [x] Stage 1: project setup
 - [x] Stage 2: read the TCP sockets (macOS through `lsof`, Linux through `/proc/net/tcp`)
-- [x] Stage 3: parse one `/proc/net/tcp` line into a struct (Linux)
-- [x] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux). Code works and matches `ss -4ltn`, tests completed
+- [x] Stage 3: parse one socket into a struct (Linux from `/proc/net/tcp`, macOS from `lsof`)
+- [x] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux). Matches `ss -4ltn`
+- [x] Stage 5: add IPv6, merged from `/proc/net/tcp6` (Linux). Matches `ss -ltn`
+
+### Progress per device
+
+| Device | Last finished stage |
+|---|---|
+| macOS | Stage 3 |
+| Linux | Stage 5 |
 
 ## Run
 
@@ -19,7 +27,7 @@ cargo run
 
 On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. Without `sudo`, only your own user's ports are visible.
 
-On Linux it reads `/proc/net/tcp` and prints the IPv4 listening sockets as `address:port`, sorted by port. Run the tests with:
+On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine) and prints the listening sockets as `address:port`, sorted by port. IPv6 addresses are written in brackets, like `[::1]:5432`. Run the tests with:
 
 ```sh
 cargo test

@@ -1,12 +1,12 @@
 #![cfg(target_os = "linux")]
 use super::ParseError;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-/// One row of /proc/net/tcp with only the fields used
+/// One row of /proc/net/tcp or /proc/net/tcp6 with only the fields used
 #[derive(PartialEq, Debug)]
 pub struct TcpEntry {
-    /// Local IP address as Ipv4Addr.
-    pub local_address: Ipv4Addr,
+    /// Local IP address, IPv4 or IPv6.
+    pub local_address: IpAddr,
     /// Local port, converted from hex.
     pub port: u16,
     /// Connection state code, converted from hex (`0x0A` is LISTEN).
@@ -17,8 +17,9 @@ pub struct TcpEntry {
     pub inode: u64,
 }
 
-/// Parses one data line of `/proc/net/tcp` (not the header).
+/// Parses one data line of `/proc/net/tcp` or `/proc/net/tcp6` (not the header).
 ///
+/// The address length decides the kind: 8 hex characters is IPv4, 32 is IPv6.
 /// Fields are split on whitespace. The row number is skipped. Returns
 /// `MissingField` if the line is too short, and `BadNumber` if a number is
 /// malformed.
@@ -53,7 +54,7 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     })?;
 
     Ok(TcpEntry {
-        local_address: parse_hex_to_ipv4(address)?,
+        local_address: parse_hex_address(address)?,
         port,
         state,
         uid,
@@ -61,27 +62,61 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     })
 }
 
-fn parse_hex_to_ipv4(address: &str) -> Result<Ipv4Addr, ParseError> {
+fn parse_hex_address(address: &str) -> Result<IpAddr, ParseError> {
+    match address.len() {
+        8 => Ok(IpAddr::V4(parse_hex_to_ipv4(address)?)),
+        32 => Ok(IpAddr::V6(parse_hex_to_ipv6(address)?)),
+        _ => Err(ParseError::BadNumber {
+            field: "address",
+            text: address.to_string(),
+        }),
+    }
+}
+
+fn decode_group(address: &str) -> Result<[u8; 4], ParseError> {
     let raw = u32::from_str_radix(address, 16).map_err(|_| ParseError::BadNumber {
         field: "address",
         text: address.to_string(),
     })?;
-    Ok(Ipv4Addr::from(raw.to_ne_bytes()))
+    Ok(raw.to_ne_bytes())
+}
+
+fn parse_hex_to_ipv4(address: &str) -> Result<Ipv4Addr, ParseError> {
+    let as_bytes = decode_group(address)?;
+    Ok(Ipv4Addr::from(as_bytes))
+}
+
+fn parse_hex_to_ipv6(address: &str) -> Result<Ipv6Addr, ParseError> {
+    if !address.is_ascii() || address.len() != 32 {
+        return Err(ParseError::BadNumber {
+            field: "address",
+            text: address.to_string(),
+        });
+    }
+    let mut bytes = Vec::new();
+    for piece in address.as_bytes().chunks(8) {
+        let piece_text = std::str::from_utf8(piece).map_err(|_| ParseError::BadNumber {
+            field: "address",
+            text: address.to_string(),
+        })?;
+        let group = decode_group(piece_text)?;
+        bytes.extend(group);
+    }
+    let array: [u8; 16] = bytes.try_into().map_err(|_| ParseError::BadNumber {
+        field: "address",
+        text: address.to_string(),
+    })?;
+    Ok(Ipv6Addr::from(array))
 }
 
 pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
-    let split = text.lines().skip(1);
-    let mut res = Vec::new();
-    for line in split {
-        let parsed = parse_socket(line);
-        if let Ok(entry) = parsed {
-            res.push(entry);
-        }
-    }
-    res
+    text.lines()
+        .skip(1)
+        .filter_map(|line| parse_socket(line).ok())
+        .collect()
 }
 
-pub fn filter_listeners(list: Vec<TcpEntry>) -> Vec<TcpEntry> {
+pub fn filter_and_sort_listeners(list: Vec<TcpEntry>) -> Vec<TcpEntry> {
     let mut listeners: Vec<TcpEntry> = list
         .into_iter()
         .filter(|entry| entry.state == 0x0A)
@@ -190,32 +225,136 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_an_ipv6_port_line() {
+        let tcp_entry = parse_socket("0: 00000000000000000000000001000000:18EB 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000   955        0 24604 1 00000000ae4dee8f 100 0 0 10 0")
+            .unwrap();
+        assert_eq!(
+            tcp_entry.local_address,
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)
+        );
+        assert_eq!(tcp_entry.port, 6379);
+        assert_eq!(tcp_entry.state, 10);
+        assert_eq!(tcp_entry.uid, 955);
+        assert_eq!(tcp_entry.inode, 24604);
+    }
+
+    #[test]
+    fn parses_an_ipv6_postgres_line() {
+        let tcp_entry = parse_socket("1: 00000000000000000000000001000000:1538 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000   957        0 21286 1 0000000021bf0adb 100 0 0 10 0")
+            .unwrap();
+        assert_eq!(
+            tcp_entry.local_address,
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)
+        );
+        assert_eq!(tcp_entry.port, 5432);
+        assert_eq!(tcp_entry.state, 10);
+        assert_eq!(tcp_entry.uid, 957);
+        assert_eq!(tcp_entry.inode, 21286);
+    }
+
     /// Tests for the function parse_hex_to_ipv4
     #[test]
-    fn parse_ip_address_1() {
+    fn ipv4_loopback() {
         let parsed_address = parse_hex_to_ipv4("0100007F").unwrap();
         assert_eq!(parsed_address, Ipv4Addr::new(127, 0, 0, 1));
     }
 
     #[test]
-    fn parse_ip_address_2() {
+    fn ipv4_dns_stub() {
         let parsed_address = parse_hex_to_ipv4("3500007F").unwrap();
         assert_eq!(parsed_address, Ipv4Addr::new(127, 0, 0, 53));
     }
 
     #[test]
-    fn parse_ip_address_3() {
+    fn ipv4_all_zeros() {
         let parsed_address = parse_hex_to_ipv4("00000000").unwrap();
         assert_eq!(parsed_address, Ipv4Addr::new(0, 0, 0, 0));
     }
 
     #[test]
-    fn parse_ip_address_fail() {
+    fn ipv4_rejects_non_hex() {
         assert_eq!(
             parse_hex_to_ipv4("ZZZZZZZZ"),
             Err(ParseError::BadNumber {
                 field: "address",
                 text: String::from("ZZZZZZZZ"),
+            })
+        );
+    }
+
+    /// Tests for the function parse_hex_to_ipv6
+    #[test]
+    fn ipv6_loopback() {
+        let parsed_address = parse_hex_to_ipv6("00000000000000000000000001000000").unwrap();
+        assert_eq!(parsed_address, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+    }
+
+    #[test]
+    fn ipv6_all_zeros() {
+        let parsed_address = parse_hex_to_ipv6("00000000000000000000000000000000").unwrap();
+        assert_eq!(parsed_address, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
+    }
+
+    #[test]
+    fn ipv6_mapped_ipv4() {
+        let parsed_address = parse_hex_to_ipv6("0000000000000000FFFF00000100007F").unwrap();
+        assert_eq!(
+            parsed_address,
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0x7f00, 1)
+        );
+        assert_eq!(
+            parsed_address,
+            "::ffff:127.0.0.1".parse::<Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn ipv6_rejects_wrong_length() {
+        assert_eq!(
+            parse_hex_to_ipv6("00000"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("00000")
+            })
+        );
+    }
+
+    #[test]
+    fn ipv6_rejects_non_hex() {
+        assert_eq!(
+            parse_hex_to_ipv6("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("ZZZZZZZZ")
+            })
+        );
+    }
+
+    /// Tests for the function parse_hex_address
+    #[test]
+    fn hex_address_of_8_characters_is_ipv4() {
+        assert_eq!(
+            parse_hex_address("0100007F"),
+            Ok(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+        );
+    }
+
+    #[test]
+    fn hex_address_of_32_characters_is_ipv6() {
+        assert_eq!(
+            parse_hex_address("00000000000000000000000001000000"),
+            Ok(IpAddr::V6(Ipv6Addr::LOCALHOST))
+        );
+    }
+
+    #[test]
+    fn hex_address_rejects_other_lengths() {
+        assert_eq!(
+            parse_hex_address("0100007"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("0100007")
             })
         );
     }
@@ -248,13 +387,13 @@ mod tests {
         assert!(text_to_entries("").is_empty());
     }
 
-    /// Tests for the function filter_listeners
+    /// Tests for the function filter_and_sort_listeners
     const LISTEN_HIGH_PORT: &str = "   1: 0100007F:2CAA 00000000:0000 0A 00000000:00000000 00:00000000 00000000   954        0 23570 2 0000000030222c1a 100 0 0 10 0";
 
     #[test]
     fn keeps_only_listen() {
         let text = format!("{HEADER}\n{ESTABLISHED}\n{LISTEN}\n");
-        let listeners = filter_listeners(text_to_entries(&text));
+        let listeners = filter_and_sort_listeners(text_to_entries(&text));
         assert_eq!(listeners.len(), 1);
         assert_eq!(listeners[0].port, 53);
         assert_eq!(listeners[0].state, 10);
@@ -263,7 +402,7 @@ mod tests {
     #[test]
     fn sort_by_port() {
         let text = format!("{HEADER}\n{LISTEN_HIGH_PORT}\n{LISTEN}\n");
-        let ports: Vec<u16> = filter_listeners(text_to_entries(&text))
+        let ports: Vec<u16> = filter_and_sort_listeners(text_to_entries(&text))
             .iter()
             .map(|entry| entry.port)
             .collect();

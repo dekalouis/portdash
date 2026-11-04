@@ -1,11 +1,12 @@
 #[cfg(target_os = "macos")]
 use crate::parse::parse_lsof;
 #[cfg(target_os = "linux")]
-use crate::parse::{filter_listeners, text_to_entries};
+use crate::parse::{filter_and_sort_listeners, text_to_entries};
 #[cfg(target_os = "linux")]
 use crate::sockets::read_entries;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
+use std::net::SocketAddr;
 
 mod parse;
 mod sockets;
@@ -40,14 +41,19 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     match read_entries() {
-        Ok(text) => {
-            let mut entries = text_to_entries(&text);
-            entries = filter_listeners(entries);
-
-            for entry in &entries {
-                println!("{}:{}", entry.local_address, entry.port);
+        Ok(texts) => {
+            let mut entries = Vec::new();
+            for text in &texts {
+                let to_entry = text_to_entries(text);
+                entries.extend(to_entry);
             }
-            println!("count {}", entries.len());
+            let filtered_and_sorted = filter_and_sort_listeners(entries);
+
+            for entry in &filtered_and_sorted {
+                let socket_address = SocketAddr::new(entry.local_address, entry.port);
+                println!("{}", socket_address);
+            }
+            println!("count {}", filtered_and_sorted.len());
         }
         Err(err) => {
             eprintln!("could not read sockets: {err}");

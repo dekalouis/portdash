@@ -5,8 +5,16 @@ use std::io;
 use std::process::{Command, Stdio};
 
 #[cfg(target_os = "linux")]
-pub fn read_entries() -> io::Result<String> {
-    fs::read_to_string("/proc/net/tcp")
+pub fn read_entries() -> io::Result<Vec<String>> {
+    let mut res = Vec::new();
+    let tcp = fs::read_to_string("/proc/net/tcp")?;
+    res.push(tcp);
+    match fs::read_to_string("/proc/net/tcp6") {
+        Ok(text) => res.push(text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    Ok(res)
 }
 
 #[cfg(target_os = "macos")]
