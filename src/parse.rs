@@ -271,6 +271,7 @@ mod tests {
         );
     }
 
+    /// Tests for the function parse_hex_to_ipv4
     #[test]
     fn parse_ip_address_1() {
         let parsed_address = parse_hex_to_ipv4("0100007F").unwrap();
@@ -298,6 +299,56 @@ mod tests {
                 text: String::from("ZZZZZZZZ"),
             })
         );
+    }
+
+    /// Tests for the function text_to_entries
+    const HEADER: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+    const LISTEN: &str = "   0: 010011AC:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000   975        0 5590 1 000000004c1e4911 100 0 0 10 5";
+    const ESTABLISHED: &str = "  13: 0100007F:D87C 0100007F:91FA 01 00000000:00000000 02:000007F7 00000000  1000        0 7997159 2 000000002ac490fd 20 4 31 10 -1";
+
+    #[test]
+    fn returns_every_line() {
+        let text = format!("{HEADER}\n{LISTEN}\n{ESTABLISHED}\n");
+        let entries = text_to_entries(&text);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].port, 53);
+        assert_eq!(entries[1].port, 55420);
+        assert_eq!(entries[1].state, 1);
+    }
+
+    #[test]
+    fn skips_a_bad_line() {
+        let text = format!("{HEADER}\n{LISTEN}\nthis is not a socket\n");
+        let entries = text_to_entries(&text);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].port, 53);
+    }
+
+    #[test]
+    fn empty_text() {
+        assert!(text_to_entries("").is_empty());
+    }
+
+    /// Tests for the function filter_listeners
+    const LISTEN_HIGH_PORT: &str = "   1: 0100007F:2CAA 00000000:0000 0A 00000000:00000000 00:00000000 00000000   954        0 23570 2 0000000030222c1a 100 0 0 10 0";
+
+    #[test]
+    fn keeps_only_listen() {
+        let text = format!("{HEADER}\n{ESTABLISHED}\n{LISTEN}\n");
+        let listeners = filter_listeners(text_to_entries(&text));
+        assert_eq!(listeners.len(), 1);
+        assert_eq!(listeners[0].port, 53);
+        assert_eq!(listeners[0].state, 10);
+    }
+
+    #[test]
+    fn sort_by_port() {
+        let text = format!("{HEADER}\n{LISTEN_HIGH_PORT}\n{LISTEN}\n");
+        let ports: Vec<u16> = filter_listeners(text_to_entries(&text))
+            .iter()
+            .map(|entry| entry.port)
+            .collect();
+        assert_eq!(ports, [53, 11434]);
     }
 }
 
