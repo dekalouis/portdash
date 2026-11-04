@@ -9,7 +9,7 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 1: project setup
 - [x] Stage 2: read the TCP sockets (macOS through `lsof`, Linux through `/proc/net/tcp`)
 - [x] Stage 3: parse one `/proc/net/tcp` line into a struct (Linux)
-- [ ] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux). Code works and matches `ss -4ltn`, tests still to write
+- [x] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux). Code works and matches `ss -4ltn`, tests completed
 
 ## Run
 
