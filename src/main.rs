@@ -23,10 +23,11 @@ fn main() {
                 .count();
 
             match parse_lsof(&lsof_text) {
-                Ok(entries) => {
+                Ok(mut entries) => {
+                    entries.sort_by_key(|entry| entry.port);
                     for entry in &entries {
                         // TODO: {:?} is development output. Replace it (Stage 8a).
-                        println!("{:?}", entry);
+                        println!("{}:{}", entry.raw_address, entry.port);
                     }
                     println!("count {}, actual {}", socket_lines, entries.len());
                 }

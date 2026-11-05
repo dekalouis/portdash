@@ -9,7 +9,7 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 1: project setup
 - [x] Stage 2: read the TCP sockets (macOS through `lsof`, Linux through `/proc/net/tcp`)
 - [x] Stage 3: parse one socket into a struct (Linux from `/proc/net/tcp`, macOS from `lsof`)
-- [x] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux). Matches `ss -4ltn`
+- [x] Stage 4: decode IPv4 addresses and list only LISTEN sockets, sorted by port (Linux matches `ss -4ltn`, macOS matches `lsof -nP -iTCP -sTCP:LISTEN -a -i4`)
 - [x] Stage 5: add IPv6, merged from `/proc/net/tcp6` (Linux). Matches `ss -ltn`
 - [x] Stage 6: map sockets to PIDs by scanning `/proc/<pid>/fd` (Linux). Matches `ss -ltnp`, and a forked server shows both PIDs
 
@@ -17,7 +17,7 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 
 | Device | Last finished stage |
 |---|---|
-| macOS | Stage 3 |
+| macOS | Stage 4 |
 | Linux | Stage 6 |
 
 ## Run
@@ -36,4 +36,4 @@ cargo test
 
 ## Debug output
 
-Some output is temporary for now. The macOS output still prints with `{:?}`, Rust's `Debug` format, which is meant for me. The Linux PID list (`[1234, 1235]`) does too. Parse errors have no readable message yet. Stage 8a of the guide replaces both with proper `Display` messages.
+Some output is temporary for now. On macOS, the warning for a skipped socket still prints with `{:?}`, Rust's `Debug` format, which is meant for me. IPv6 rows are not bracketed yet (`::1:6379`), which a later stage fixes. The Linux PID list (`[1234, 1235]`) does too. Parse errors have no readable message yet. Stage 8a of the guide replaces both with proper `Display` messages.
