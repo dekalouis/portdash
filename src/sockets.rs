@@ -11,7 +11,7 @@ pub fn read_entries() -> io::Result<Vec<String>> {
     res.push(tcp);
     match fs::read_to_string("/proc/net/tcp6") {
         Ok(text) => res.push(text),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err),
     }
     Ok(res)

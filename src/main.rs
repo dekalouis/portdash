@@ -41,28 +41,36 @@ fn main() {
     }
 
     #[cfg(target_os = "linux")]
-    match read_entries() {
-        Ok(texts) => {
-            let mut entries = Vec::new();
-            for text in &texts {
-                let to_entry = text_to_entries(text);
-                entries.extend(to_entry);
+    {
+        let texts = match read_entries() {
+            Ok(texts) => texts,
+            Err(err) => {
+                eprintln!("could not read sockets: {err}");
+                std::process::exit(1);
             }
-            let filtered_and_sorted = filter_and_sort_listeners(entries);
+        };
+        let mut entries = Vec::new();
+        for text in &texts {
+            let to_entry = text_to_entries(text);
+            entries.extend(to_entry);
+        }
+        let filtered_and_sorted = filter_and_sort_listeners(entries);
 
-            for entry in &filtered_and_sorted {
-                let socket_address = SocketAddr::new(entry.local_address, entry.port);
-                println!("{}", socket_address);
+        let owners = match process::socket_owners() {
+            Ok(map) => map,
+            Err(err) => {
+                eprintln!("could not read socket owners: {err}");
+                std::process::exit(1);
             }
-            println!("count {}", filtered_and_sorted.len());
+        };
+
+        for entry in &filtered_and_sorted {
+            let socket_address = SocketAddr::new(entry.local_address, entry.port);
+            match owners.get(&entry.inode) {
+                Some(pids) => println!("{}: {:?}", socket_address, pids),
+                None => println!("{}: -", socket_address),
+            }
         }
-        Err(err) => {
-            eprintln!("could not read sockets: {err}");
-            std::process::exit(1);
-        }
+        println!("count {}", filtered_and_sorted.len());
     }
-
-    //testing process results
-    let index = process::socket_owners();
-    println!("{:?}", index);
 }

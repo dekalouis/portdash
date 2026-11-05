@@ -78,6 +78,8 @@ fn decode_group(address: &str) -> Result<[u8; 4], ParseError> {
         field: "address",
         text: address.to_string(),
     })?;
+    // The kernel prints each 4-byte group as a host-order integer, so the
+    // native-endian bytes are the original address bytes.
     Ok(raw.to_ne_bytes())
 }
 
@@ -93,20 +95,13 @@ fn parse_hex_to_ipv6(address: &str) -> Result<Ipv6Addr, ParseError> {
             text: address.to_string(),
         });
     }
-    let mut bytes = Vec::new();
-    for piece in address.as_bytes().chunks(8) {
-        let piece_text = std::str::from_utf8(piece).map_err(|_| ParseError::BadNumber {
-            field: "address",
-            text: address.to_string(),
-        })?;
-        let group = decode_group(piece_text)?;
-        bytes.extend(group);
+    let mut bytes = [0u8; 16];
+    for i in 0..4 {
+        // The ASCII and length checks above mean this slice cannot split a character.
+        let group = decode_group(&address[i * 8..(i + 1) * 8])?;
+        bytes[i * 4..(i + 1) * 4].copy_from_slice(&group);
     }
-    let array: [u8; 16] = bytes.try_into().map_err(|_| ParseError::BadNumber {
-        field: "address",
-        text: address.to_string(),
-    })?;
-    Ok(Ipv6Addr::from(array))
+    Ok(Ipv6Addr::from(bytes))
 }
 
 pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
@@ -116,10 +111,13 @@ pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
         .collect()
 }
 
+/// Connection state code of a listening socket in `/proc/net/tcp`.
+const TCP_LISTEN: u8 = 0x0A;
+
 pub fn filter_and_sort_listeners(list: Vec<TcpEntry>) -> Vec<TcpEntry> {
     let mut listeners: Vec<TcpEntry> = list
         .into_iter()
-        .filter(|entry| entry.state == 0x0A)
+        .filter(|entry| entry.state == TCP_LISTEN)
         .collect();
     listeners.sort_by_key(|entry| entry.port);
     listeners
@@ -327,6 +325,19 @@ mod tests {
             Err(ParseError::BadNumber {
                 field: "address",
                 text: String::from("ZZZZZZZZ")
+            })
+        );
+    }
+
+    // 16 two-byte characters make 32 bytes, so only the ASCII check stops the slicing from panicking
+    #[test]
+    fn ipv6_rejects_multibyte_text() {
+        let text = "é".repeat(16);
+        assert_eq!(
+            parse_hex_to_ipv6(&text),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: text.clone()
             })
         );
     }
