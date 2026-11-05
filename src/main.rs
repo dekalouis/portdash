@@ -9,6 +9,7 @@ use crate::sockets::run_lsof;
 use std::net::SocketAddr;
 
 mod parse;
+mod process;
 mod sockets;
 
 fn main() {
@@ -60,4 +61,8 @@ fn main() {
             std::process::exit(1);
         }
     }
+
+    //testing process results
+    let index = process::socket_owners();
+    println!("{:?}", index);
 }
