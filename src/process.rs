@@ -1,3 +1,4 @@
+#![cfg(target_os = "linux")]
 use std::{collections::HashMap, fs, io};
 
 /// Scans `/proc/<pid>/fd` and maps each socket inode to the PIDs holding it.

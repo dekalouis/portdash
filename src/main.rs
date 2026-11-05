@@ -6,6 +6,7 @@ use crate::parse::{filter_and_sort_listeners, text_to_entries};
 use crate::sockets::read_entries;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
+#[cfg(target_os = "linux")]
 use std::net::SocketAddr;
 
 mod parse;

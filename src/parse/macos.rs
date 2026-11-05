@@ -1,6 +1,5 @@
 #![cfg(target_os = "macos")]
 use super::ParseError;
-use std::net::Ipv4Addr;
 
 #[derive(PartialEq, Debug)]
 pub struct LsofEntry {
@@ -12,13 +11,6 @@ pub struct LsofEntry {
     pub socket_id: String,
     pub raw_address: String,
     pub port: u16,
-}
-
-// TODO: implement `Display` for readable messages (Stage 8a).
-#[derive(PartialEq, Debug)]
-pub enum ParseError {
-    MissingField(&'static str),
-    BadNumber { field: &'static str, text: String },
 }
 
 pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
