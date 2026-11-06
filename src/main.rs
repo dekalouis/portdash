@@ -1,7 +1,7 @@
-#[cfg(target_os = "macos")]
-use crate::parse::parse_lsof;
 #[cfg(target_os = "linux")]
 use crate::parse::{filter_and_sort_listeners, text_to_entries};
+#[cfg(target_os = "macos")]
+use crate::parse::{group_lsof_entry, parse_lsof};
 #[cfg(target_os = "linux")]
 use crate::sockets::read_entries;
 #[cfg(target_os = "macos")]
@@ -22,11 +22,13 @@ fn main() {
                 .count();
 
             match parse_lsof(&lsof_text) {
-                Ok(mut entries) => {
-                    entries.sort_by_key(|entry| entry.port);
-                    for entry in &entries {
-                        let socket_address = SocketAddr::new(entry.raw_address, entry.port);
-                        println!("{}", socket_address);
+                Ok(entries) => {
+                    let mut listeners = group_lsof_entry(&entries);
+
+                    listeners.sort_by_key(|listener| listener.port);
+                    for listener in &listeners {
+                        let socket_address = SocketAddr::new(listener.address, listener.port);
+                        println!("{}: {:?}", socket_address, listener.pids);
                     }
                     println!("count {}, actual {}", socket_lines, entries.len());
                 }
