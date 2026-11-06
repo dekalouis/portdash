@@ -308,6 +308,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_a_bracketed_ipv6_endpoint() {
+        assert_eq!(
+            parse_endpoint("[::1]:8766", "IPv6"),
+            Ok((IpAddr::V6(Ipv6Addr::LOCALHOST), 8766))
+        );
+    }
+
+    #[test]
+    fn parses_a_star_ipv6_endpoint() {
+        assert_eq!(
+            parse_endpoint("*:8000", "IPv6"),
+            Ok((IpAddr::V6(Ipv6Addr::UNSPECIFIED), 8000))
+        );
+    }
+
+    #[test]
+    fn parses_ipv4_text_under_ipv6_family_endpoint() {
+        assert_eq!(
+            parse_endpoint("127.0.0.1:8783", "IPv6"),
+            Ok((IpAddr::V4(Ipv4Addr::LOCALHOST), 8783))
+        );
+    }
+
+    #[test]
+    fn rejects_a_bad_port_on_an_ipv6_endpoint() {
+        assert_eq!(
+            parse_endpoint("[::1]:ZZZZ", "IPv6"),
+            Err(ParseError::BadNumber {
+                field: "port",
+                text: String::from("ZZZZ")
+            })
+        );
+    }
+
     /// Tests for the function parse_lsof_address
     #[test]
     fn parses_a_plain_address() {
