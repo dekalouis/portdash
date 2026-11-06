@@ -6,7 +6,6 @@ use crate::parse::{filter_and_sort_listeners, text_to_entries};
 use crate::sockets::read_entries;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
-#[cfg(target_os = "linux")]
 use std::net::SocketAddr;
 
 mod parse;
@@ -26,8 +25,8 @@ fn main() {
                 Ok(mut entries) => {
                     entries.sort_by_key(|entry| entry.port);
                     for entry in &entries {
-                        // TODO: {:?} is development output. Replace it (Stage 8a).
-                        println!("{}:{}", entry.raw_address, entry.port);
+                        let socket_address = SocketAddr::new(entry.raw_address, entry.port);
+                        println!("{}", socket_address);
                     }
                     println!("count {}, actual {}", socket_lines, entries.len());
                 }

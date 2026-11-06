@@ -96,7 +96,15 @@ fn parse_lsof_address(text: &str, family: &str) -> Result<IpAddr, ParseError> {
             }),
         }
     } else {
-        let trimmed = text.trim_matches(|c| c == '[' || c == ']');
+        let trimmed = match text.strip_prefix("[") {
+            Some(rest) => rest
+                .strip_suffix("]")
+                .ok_or_else(|| ParseError::BadNumber {
+                    field: "address",
+                    text: text.to_string(),
+                })?,
+            None => text,
+        };
         trimmed.parse().map_err(|_| ParseError::BadNumber {
             field: "address",
             text: text.to_string(),
@@ -117,6 +125,7 @@ mod tests {
         d0x28282d27564c8a55\n\
         n127.0.0.1:49374\n";
 
+    /// Tests for the function parse_lsof
     #[test]
     fn parses_a_good_line() {
         let lsof_entry = parse_lsof(ONE_SOCKET).unwrap();
@@ -234,17 +243,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_bad_port() {
-        assert_eq!(
-            parse_endpoint("127.0.0.1:ZZZZ", "IPv4"),
-            Err(ParseError::BadNumber {
-                field: "port",
-                text: String::from("ZZZZ")
-            })
-        );
-    }
-
-    #[test]
     fn skips_a_bad_socket_and_keeps_the_rest() {
         let entries = parse_lsof(
             "p28161\n\
@@ -298,6 +296,19 @@ mod tests {
         assert_eq!(result, Err(ParseError::MissingField("pid")));
     }
 
+    /// Tests for the function parse_endpoint
+    #[test]
+    fn rejects_a_bad_port() {
+        assert_eq!(
+            parse_endpoint("127.0.0.1:ZZZZ", "IPv4"),
+            Err(ParseError::BadNumber {
+                field: "port",
+                text: String::from("ZZZZ")
+            })
+        );
+    }
+
+    /// Tests for the function parse_lsof_address
     #[test]
     fn parses_a_plain_address() {
         assert_eq!(
@@ -321,6 +332,60 @@ mod tests {
             Err(ParseError::BadNumber {
                 field: "address",
                 text: String::from("not-an-address")
+            })
+        );
+    }
+
+    #[test]
+    fn star_with_ipv6_family_is_unspecified() {
+        assert_eq!(
+            parse_lsof_address("*", "IPv6"),
+            Ok(IpAddr::V6(Ipv6Addr::UNSPECIFIED))
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_family() {
+        assert_eq!(
+            parse_lsof_address("*", "IPv5"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("IPv5")
+            })
+        );
+    }
+
+    #[test]
+    fn parses_a_non_star_address() {
+        assert_eq!(
+            parse_lsof_address("[::1]", "IPv6"),
+            Ok(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))
+        );
+    }
+
+    #[test]
+    fn ipv4_text_under_ipv6_family_still_parses() {
+        assert_eq!(
+            parse_lsof_address("127.0.0.1", "IPv6"),
+            Ok(IpAddr::V4(Ipv4Addr::LOCALHOST))
+        );
+    }
+
+    #[test]
+    fn parses_an_ipv6_address_without_brackets() {
+        assert_eq!(
+            parse_lsof_address("::1", "IPv6"),
+            Ok(IpAddr::V6(Ipv6Addr::LOCALHOST))
+        );
+    }
+
+    #[test]
+    fn rejects_missing_bracket() {
+        assert_eq!(
+            parse_lsof_address("[::1", "IPv6"),
+            Err(ParseError::BadNumber {
+                field: "address",
+                text: String::from("[::1")
             })
         );
     }
