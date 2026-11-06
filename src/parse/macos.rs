@@ -3,25 +3,34 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use super::ParseError;
 
+/// One listening socket as `lsof -F` reports it: one record per process per socket.
 #[derive(PartialEq, Debug)]
 pub struct LsofEntry {
+    /// Process ID (`p` field).
     pub pid: u32,
+    /// Parent process ID (`R` field).
     pub parent_pid: u32,
+    /// Short process name (`c` field). May contain spaces.
     pub cmd_name: String,
+    /// Owner's user ID (`u` field).
     pub uid: u32,
+    /// Socket family (`t` field), such as `IPv4` or `IPv6`.
     pub family: String,
+    /// Kernel socket ID (`d` field). Shared by processes holding the same socket.
     pub socket_id: String,
-    pub raw_address: IpAddr,
-    pub port: u16,
-}
-
-#[derive(PartialEq, Debug)]
-pub struct LsofListener {
+    /// Local IP address, IPv4 or IPv6.
     pub address: IpAddr,
+    /// Local port.
     pub port: u16,
-    pub pids: Vec<u32>,
 }
 
+/// Parses the output of `lsof -F` into one record per process per socket.
+///
+/// Process fields (`p`, `R`, `c`, `u`) carry over to every socket below them,
+/// and socket fields (`t`, `d`) reset at each `f` line. A socket whose `n`
+/// field cannot be parsed is skipped with a warning on stderr. Returns
+/// `MissingField` if a socket appears before its process fields, and
+/// `BadNumber` if a process number is malformed.
 pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
     let mut pid: Option<u32> = None;
     let mut parent_pid: Option<u32> = None;
@@ -48,7 +57,7 @@ pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
             'd' => socket_id = value.to_string(),
             'n' => {
                 // One odd socket should not lose the whole list: warn and move on.
-                let (raw_address, port) = match parse_endpoint(value, &family) {
+                let (address, port) = match parse_endpoint(value, &family) {
                     Ok(endpoint) => endpoint,
                     Err(err) => {
                         eprintln!("skipping {value}: {err:?}");
@@ -63,7 +72,7 @@ pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
                     uid: uid.ok_or(ParseError::MissingField("uid"))?,
                     family: family.clone(),
                     socket_id: socket_id.clone(),
-                    raw_address,
+                    address,
                     port,
                 });
             }
@@ -73,6 +82,7 @@ pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
     Ok(entries)
 }
 
+/// Parses a decimal field, naming `field` in the error if it is not a `u32`.
 fn parse_u32(field: &'static str, value: &str) -> Result<u32, ParseError> {
     value.parse().map_err(|_| ParseError::BadNumber {
         field,
@@ -92,6 +102,11 @@ fn parse_endpoint(value: &str, family: &str) -> Result<(IpAddr, u16), ParseError
     Ok((parse_lsof_address(address, family)?, port))
 }
 
+/// Parses the address part of an `n` value.
+///
+/// `*` means every interface, and `family` decides whether that is `0.0.0.0`
+/// or `::`. Any other text is parsed as it is, after removing one pair of
+/// brackets, so an IPv4 address under an `IPv6` family still parses.
 fn parse_lsof_address(text: &str, family: &str) -> Result<IpAddr, ParseError> {
     if text == "*" {
         match family {
@@ -119,31 +134,6 @@ fn parse_lsof_address(text: &str, family: &str) -> Result<IpAddr, ParseError> {
     }
 }
 
-/// Turns one record per process per socket into one listener per socket,
-/// keyed by socket ID, address and port, with the PIDs that own it.
-pub fn group_lsof_entry(lsof_entry: &[LsofEntry]) -> Vec<LsofListener> {
-    let mut seen: Vec<((String, IpAddr, u16), LsofListener)> = Vec::new();
-    for entry in lsof_entry {
-        let key = (entry.socket_id.clone(), entry.raw_address, entry.port);
-        match seen.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, listener)) => {
-                if !listener.pids.contains(&entry.pid) {
-                    listener.pids.push(entry.pid);
-                }
-            }
-            None => seen.push((
-                key,
-                LsofListener {
-                    address: entry.raw_address,
-                    port: entry.port,
-                    pids: vec![entry.pid],
-                },
-            )),
-        }
-    }
-    seen.into_iter().map(|(_, listener)| listener).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,7 +147,7 @@ mod tests {
         d0x28282d27564c8a55\n\
         n127.0.0.1:49374\n";
 
-    /// Tests for the function parse_lsof
+    // Tests for the function parse_lsof
     #[test]
     fn parses_a_good_line() {
         let lsof_entry = parse_lsof(ONE_SOCKET).unwrap();
@@ -171,7 +161,7 @@ mod tests {
                 uid: 501,
                 family: "IPv4".into(),
                 socket_id: "0x28282d27564c8a55".into(),
-                raw_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                address: IpAddr::V4(Ipv4Addr::LOCALHOST),
                 port: 49374,
             }
         );
@@ -204,7 +194,7 @@ mod tests {
                 uid: 501,
                 family: "IPv4".into(),
                 socket_id: "0xce9c9535e69391e9".into(),
-                raw_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                address: IpAddr::V4(Ipv4Addr::LOCALHOST),
                 port: 6379,
             }
         );
@@ -217,7 +207,7 @@ mod tests {
                 uid: 501,
                 family: "IPv6".into(),
                 socket_id: "0xfdf7acbc3acbc9c6".into(),
-                raw_address: IpAddr::V6(Ipv6Addr::LOCALHOST),
+                address: IpAddr::V6(Ipv6Addr::LOCALHOST),
                 port: 6379,
             }
         );
@@ -328,7 +318,7 @@ mod tests {
         assert_eq!(result, Err(ParseError::MissingField("pid")));
     }
 
-    /// Tests for the function parse_endpoint
+    // Tests for the function parse_endpoint
     #[test]
     fn rejects_a_bad_port() {
         assert_eq!(
@@ -375,7 +365,7 @@ mod tests {
         );
     }
 
-    /// Tests for the function parse_lsof_address
+    // Tests for the function parse_lsof_address
     #[test]
     fn parses_a_plain_address() {
         assert_eq!(
@@ -455,89 +445,5 @@ mod tests {
                 text: String::from("[::1")
             })
         );
-    }
-
-    /// Builds one record, so each grouping test only states what it cares about.
-    fn entry(pid: u32, socket_id: &str, address: IpAddr, port: u16) -> LsofEntry {
-        LsofEntry {
-            pid,
-            parent_pid: 1,
-            cmd_name: "test".into(),
-            uid: 501,
-            family: "IPv4".into(),
-            socket_id: socket_id.into(),
-            raw_address: address,
-            port,
-        }
-    }
-
-    /// Tests for the function group_lsof_entry
-    #[test]
-    fn groups_two_pids_on_one_socket() {
-        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let listeners = group_lsof_entry(&[
-            entry(100, "0xA", local, 8767),
-            entry(200, "0xA", local, 8767),
-        ]);
-        assert_eq!(
-            listeners,
-            [LsofListener {
-                address: local,
-                port: 8767,
-                pids: vec![100, 200],
-            }]
-        );
-    }
-
-    #[test]
-    fn lists_a_pid_once_for_two_descriptors_of_one_socket() {
-        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let listeners = group_lsof_entry(&[
-            entry(100, "0xA", local, 8767),
-            entry(100, "0xA", local, 8767),
-        ]);
-        assert_eq!(
-            listeners,
-            [LsofListener {
-                address: local,
-                port: 8767,
-                pids: vec![100],
-            }]
-        );
-    }
-
-    #[test]
-    fn splits_two_sockets_of_one_pid_on_one_port() {
-        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let listeners = group_lsof_entry(&[
-            entry(100, "0xA", local, 8785),
-            entry(100, "0xB", local, 8785),
-        ]);
-        assert_eq!(listeners.len(), 2);
-        assert_eq!(listeners[0].pids, [100]);
-        assert_eq!(listeners[1].pids, [100]);
-    }
-
-    #[test]
-    fn splits_one_pid_on_two_ports() {
-        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let listeners = group_lsof_entry(&[
-            entry(100, "0xA", local, 8000),
-            entry(100, "0xB", local, 8001),
-        ]);
-        assert_eq!(listeners.len(), 2);
-        assert_eq!(listeners[0].port, 8000);
-        assert_eq!(listeners[1].port, 8001);
-    }
-
-    #[test]
-    fn splits_star_ipv4_from_star_ipv6() {
-        let listeners = group_lsof_entry(&[
-            entry(100, "0xA", IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8000),
-            entry(100, "0xB", IpAddr::V6(Ipv6Addr::UNSPECIFIED), 8000),
-        ]);
-        assert_eq!(listeners.len(), 2);
-        assert_eq!(listeners[0].address, IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-        assert_eq!(listeners[1].address, IpAddr::V6(Ipv6Addr::UNSPECIFIED));
     }
 }

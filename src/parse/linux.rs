@@ -2,11 +2,14 @@
 use super::ParseError;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+/// Connection state code of a listening socket in `/proc/net/tcp`.
+const TCP_LISTEN: u8 = 0x0A;
+
 /// One row of /proc/net/tcp or /proc/net/tcp6 with only the fields used
 #[derive(PartialEq, Debug)]
 pub struct TcpEntry {
     /// Local IP address, IPv4 or IPv6.
-    pub local_address: IpAddr,
+    pub address: IpAddr,
     /// Local port, converted from hex.
     pub port: u16,
     /// Connection state code, converted from hex (`0x0A` is LISTEN).
@@ -54,7 +57,7 @@ pub fn parse_socket(line: &str) -> Result<TcpEntry, ParseError> {
     })?;
 
     Ok(TcpEntry {
-        local_address: parse_hex_address(address)?,
+        address: parse_hex_address(address)?,
         port,
         state,
         uid,
@@ -104,23 +107,29 @@ fn parse_hex_to_ipv6(address: &str) -> Result<Ipv6Addr, ParseError> {
     Ok(Ipv6Addr::from(bytes))
 }
 
+/// Parses a whole `/proc/net/tcp` or `/proc/net/tcp6` file, skipping its header.
+///
+/// One odd line should not lose the whole list, so a line that fails to parse
+/// is skipped with a warning on stderr.
 pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
     text.lines()
         .skip(1)
-        .filter_map(|line| parse_socket(line).ok())
+        .filter_map(|line| match parse_socket(line) {
+            Ok(entry) => Some(entry),
+            Err(err) => {
+                eprintln!("skipping {}: {err:?}", line.trim());
+                None
+            }
+        })
         .collect()
 }
 
-/// Connection state code of a listening socket in `/proc/net/tcp`.
-const TCP_LISTEN: u8 = 0x0A;
-
-pub fn filter_and_sort_listeners(list: Vec<TcpEntry>) -> Vec<TcpEntry> {
-    let mut listeners: Vec<TcpEntry> = list
+/// Keeps only the sockets in the LISTEN state.
+pub fn filter_listeners(entries: Vec<TcpEntry>) -> Vec<TcpEntry> {
+    entries
         .into_iter()
         .filter(|entry| entry.state == TCP_LISTEN)
-        .collect();
-    listeners.sort_by_key(|entry| entry.port);
-    listeners
+        .collect()
 }
 
 #[cfg(test)]
@@ -132,7 +141,7 @@ mod tests {
     #[test]
     fn parses_a_good_line() {
         let tcp_entry = parse_socket(GOOD_LINE).unwrap();
-        assert_eq!(tcp_entry.local_address, Ipv4Addr::new(127, 0, 0, 1));
+        assert_eq!(tcp_entry.address, Ipv4Addr::new(127, 0, 0, 1));
         assert_eq!(tcp_entry.port, 49374);
         assert_eq!(tcp_entry.state, 10);
         assert_eq!(tcp_entry.uid, 1000);
@@ -142,7 +151,7 @@ mod tests {
     #[test]
     fn parses_a_second_line() {
         let tcp_entry = parse_socket("0: 3500007F:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000   975        0 15411 1 0000000083f5dc00 100 0 0 10 5").unwrap();
-        assert_eq!(tcp_entry.local_address, Ipv4Addr::new(127, 0, 0, 53));
+        assert_eq!(tcp_entry.address, Ipv4Addr::new(127, 0, 0, 53));
         assert_eq!(tcp_entry.port, 53);
         assert_eq!(tcp_entry.state, 10);
     }
@@ -227,10 +236,7 @@ mod tests {
     fn parses_an_ipv6_port_line() {
         let tcp_entry = parse_socket("0: 00000000000000000000000001000000:18EB 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000   955        0 24604 1 00000000ae4dee8f 100 0 0 10 0")
             .unwrap();
-        assert_eq!(
-            tcp_entry.local_address,
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)
-        );
+        assert_eq!(tcp_entry.address, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
         assert_eq!(tcp_entry.port, 6379);
         assert_eq!(tcp_entry.state, 10);
         assert_eq!(tcp_entry.uid, 955);
@@ -241,17 +247,14 @@ mod tests {
     fn parses_an_ipv6_postgres_line() {
         let tcp_entry = parse_socket("1: 00000000000000000000000001000000:1538 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000   957        0 21286 1 0000000021bf0adb 100 0 0 10 0")
             .unwrap();
-        assert_eq!(
-            tcp_entry.local_address,
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)
-        );
+        assert_eq!(tcp_entry.address, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
         assert_eq!(tcp_entry.port, 5432);
         assert_eq!(tcp_entry.state, 10);
         assert_eq!(tcp_entry.uid, 957);
         assert_eq!(tcp_entry.inode, 21286);
     }
 
-    /// Tests for the function parse_hex_to_ipv4
+    // Tests for the function parse_hex_to_ipv4
     #[test]
     fn ipv4_loopback() {
         let parsed_address = parse_hex_to_ipv4("0100007F").unwrap();
@@ -281,7 +284,7 @@ mod tests {
         );
     }
 
-    /// Tests for the function parse_hex_to_ipv6
+    // Tests for the function parse_hex_to_ipv6
     #[test]
     fn ipv6_loopback() {
         let parsed_address = parse_hex_to_ipv6("00000000000000000000000001000000").unwrap();
@@ -342,7 +345,7 @@ mod tests {
         );
     }
 
-    /// Tests for the function parse_hex_address
+    // Tests for the function parse_hex_address
     #[test]
     fn hex_address_of_8_characters_is_ipv4() {
         assert_eq!(
@@ -370,8 +373,8 @@ mod tests {
         );
     }
 
-    /// Tests for the function text_to_entries
-    const HEADER: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+    // Tests for the function text_to_entries
+    const HEADER: &str = "  sl  address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
     const LISTEN: &str = "   0: 010011AC:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000   975        0 5590 1 000000004c1e4911 100 0 0 10 5";
     const ESTABLISHED: &str = "  13: 0100007F:D87C 0100007F:91FA 01 00000000:00000000 02:000007F7 00000000  1000        0 7997159 2 000000002ac490fd 20 4 31 10 -1";
 
@@ -398,25 +401,25 @@ mod tests {
         assert!(text_to_entries("").is_empty());
     }
 
-    /// Tests for the function filter_and_sort_listeners
+    // Tests for the function filter_listeners
     const LISTEN_HIGH_PORT: &str = "   1: 0100007F:2CAA 00000000:0000 0A 00000000:00000000 00:00000000 00000000   954        0 23570 2 0000000030222c1a 100 0 0 10 0";
 
     #[test]
     fn keeps_only_listen() {
         let text = format!("{HEADER}\n{ESTABLISHED}\n{LISTEN}\n");
-        let listeners = filter_and_sort_listeners(text_to_entries(&text));
+        let listeners = filter_listeners(text_to_entries(&text));
         assert_eq!(listeners.len(), 1);
         assert_eq!(listeners[0].port, 53);
         assert_eq!(listeners[0].state, 10);
     }
 
     #[test]
-    fn sort_by_port() {
-        let text = format!("{HEADER}\n{LISTEN_HIGH_PORT}\n{LISTEN}\n");
-        let ports: Vec<u16> = filter_and_sort_listeners(text_to_entries(&text))
+    fn keeps_every_listener() {
+        let text = format!("{HEADER}\n{LISTEN_HIGH_PORT}\n{ESTABLISHED}\n{LISTEN}\n");
+        let ports: Vec<u16> = filter_listeners(text_to_entries(&text))
             .iter()
             .map(|entry| entry.port)
             .collect();
-        assert_eq!(ports, [53, 11434]);
+        assert_eq!(ports, [11434, 53]);
     }
 }

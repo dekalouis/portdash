@@ -1,9 +1,13 @@
-#[cfg(target_os = "linux")]
-use crate::parse::{filter_and_sort_listeners, text_to_entries};
 #[cfg(target_os = "macos")]
-use crate::parse::{group_lsof_entry, parse_lsof};
+use crate::parse::parse_lsof;
 #[cfg(target_os = "linux")]
-use crate::sockets::read_entries;
+use crate::parse::{filter_listeners, text_to_entries};
+#[cfg(target_os = "macos")]
+use crate::process::group_into_listeners;
+#[cfg(target_os = "linux")]
+use crate::process::socket_owners;
+#[cfg(target_os = "linux")]
+use crate::sockets::read_socket_tables;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
 use std::net::SocketAddr;
@@ -14,52 +18,56 @@ mod sockets;
 
 fn main() {
     #[cfg(target_os = "macos")]
-    match run_lsof() {
-        Ok(lsof_text) => {
-            let socket_lines = lsof_text
-                .lines()
-                .filter(|line| line.starts_with('n'))
-                .count();
-
-            match parse_lsof(&lsof_text) {
-                Ok(entries) => {
-                    let mut listeners = group_lsof_entry(&entries);
-
-                    listeners.sort_by_key(|listener| listener.port);
-                    for listener in &listeners {
-                        let socket_address = SocketAddr::new(listener.address, listener.port);
-                        println!("{}: {:?}", socket_address, listener.pids);
-                    }
-                    println!("count {}, actual {}", socket_lines, entries.len());
-                }
-                Err(err) => {
-                    eprintln!("{:?}", err);
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("could not read sockets: {err}");
-            std::process::exit(1);
-        }
-    }
-
-    #[cfg(target_os = "linux")]
     {
-        let texts = match read_entries() {
-            Ok(texts) => texts,
+        let lsof_text = match run_lsof() {
+            Ok(text) => text,
             Err(err) => {
                 eprintln!("could not read sockets: {err}");
                 std::process::exit(1);
             }
         };
-        let mut entries = Vec::new();
-        for text in &texts {
-            let to_entry = text_to_entries(text);
-            entries.extend(to_entry);
-        }
-        let filtered_and_sorted = filter_and_sort_listeners(entries);
+        let socket_lines = lsof_text
+            .lines()
+            .filter(|line| line.starts_with('n'))
+            .count();
 
-        let owners = match process::socket_owners() {
+        let entries = match parse_lsof(&lsof_text) {
+            Ok(entries) => entries,
+            Err(err) => {
+                // TODO: {:?} is development output. Replace it (Stage 8a).
+                eprintln!("could not parse sockets: {err:?}");
+                std::process::exit(1);
+            }
+        };
+
+        let mut listeners = group_into_listeners(&entries);
+        listeners.sort_by_key(|listener| listener.port);
+
+        for listener in &listeners {
+            let socket_address = SocketAddr::new(listener.address, listener.port);
+            println!("{}: {:?}", socket_address, listener.pids);
+        }
+        println!("count {}, actual {}", socket_lines, entries.len());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let tables = match read_socket_tables() {
+            Ok(tables) => tables,
+            Err(err) => {
+                eprintln!("could not read sockets: {err}");
+                std::process::exit(1);
+            }
+        };
+        let entries = tables
+            .iter()
+            .flat_map(|text| text_to_entries(text))
+            .collect();
+
+        let mut listeners = filter_listeners(entries);
+        listeners.sort_by_key(|entry| entry.port);
+
+        let owners = match socket_owners() {
             Ok(map) => map,
             Err(err) => {
                 eprintln!("could not read socket owners: {err}");
@@ -67,13 +75,13 @@ fn main() {
             }
         };
 
-        for entry in &filtered_and_sorted {
-            let socket_address = SocketAddr::new(entry.local_address, entry.port);
+        for entry in &listeners {
+            let socket_address = SocketAddr::new(entry.address, entry.port);
             match owners.get(&entry.inode) {
                 Some(pids) => println!("{}: {:?}", socket_address, pids),
                 None => println!("{}: -", socket_address),
             }
         }
-        println!("count {}", filtered_and_sorted.len());
+        println!("count {}", listeners.len());
     }
 }

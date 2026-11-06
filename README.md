@@ -26,7 +26,7 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 cargo run
 ```
 
-On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. It prints each listening socket as `address:port: [pids]`, sorted by port, with IPv6 in brackets, like `[::1]:6379: [1593]`. Without `sudo`, only your own user's ports are visible, so other users' ports are missing from the list instead of showing an unknown owner. On my machine that hides Postgres on 5432 and `launchd` on 8021.
+On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. It prints each listening socket as `address:port: [pids]`, sorted by port, with IPv6 in brackets, like `[::1]:6379: [1593]`. Without `sudo`, only your own user's ports are visible, so other users' ports are missing from the list instead of showing an unknown owner. On my machine that hides Postgres on 5432 and `launchd` on 8021. (I don't feel it's worth the trouble writing unsafe code for a dev server dashboard :P)
 
 On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine) and prints each listening socket as `address:port: [pids]`, sorted by port. IPv6 addresses are written in brackets, like `[::1]:5432`. The owner PIDs come from scanning `/proc/<pid>/fd`. Without `sudo` you can only read your own processes, so other users' ports show `-` instead of a PID. Run the tests with:
 

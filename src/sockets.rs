@@ -4,19 +4,25 @@ use std::io;
 #[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 
+/// Reads the raw text of `/proc/net/tcp` and, if it exists, `/proc/net/tcp6`.
+///
+/// A missing `tcp6` file means IPv6 is turned off, which is not an error.
 #[cfg(target_os = "linux")]
-pub fn read_entries() -> io::Result<Vec<String>> {
-    let mut res = Vec::new();
-    let tcp = fs::read_to_string("/proc/net/tcp")?;
-    res.push(tcp);
+pub fn read_socket_tables() -> io::Result<Vec<String>> {
+    let mut tables = Vec::new();
+    tables.push(fs::read_to_string("/proc/net/tcp")?);
     match fs::read_to_string("/proc/net/tcp6") {
-        Ok(text) => res.push(text),
+        Ok(text) => tables.push(text),
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err),
     }
-    Ok(res)
+    Ok(tables)
 }
 
+/// Runs `lsof` for listening TCP sockets and returns its `-F` output.
+///
+/// `lsof` exits with 1 and prints nothing to stderr when no socket matches,
+/// so that case is an empty result, not an error.
 #[cfg(target_os = "macos")]
 pub fn run_lsof() -> io::Result<String> {
     let output = Command::new("/usr/sbin/lsof")
