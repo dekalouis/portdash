@@ -49,7 +49,10 @@ mod tests {
 
         let found = find_project(&root, None);
 
-        assert_eq!(found, Some((root.clone(), "portdash-start-folder".to_string())));
+        assert_eq!(
+            found,
+            Some((root.clone(), "portdash-start-folder".to_string()))
+        );
         fs::remove_dir_all(&root).unwrap();
     }
 

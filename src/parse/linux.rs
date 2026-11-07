@@ -69,18 +69,13 @@ fn parse_hex_address(address: &str) -> Result<IpAddr, ParseError> {
     match address.len() {
         8 => Ok(IpAddr::V4(parse_hex_to_ipv4(address)?)),
         32 => Ok(IpAddr::V6(parse_hex_to_ipv6(address)?)),
-        _ => Err(ParseError::BadNumber {
-            field: "address",
-            text: address.to_string(),
-        }),
+        _ => Err(ParseError::BadAddress(address.to_string())),
     }
 }
 
 fn decode_group(address: &str) -> Result<[u8; 4], ParseError> {
-    let raw = u32::from_str_radix(address, 16).map_err(|_| ParseError::BadNumber {
-        field: "address",
-        text: address.to_string(),
-    })?;
+    let raw = u32::from_str_radix(address, 16)
+        .map_err(|_| ParseError::BadAddress(address.to_string()))?;
     // The kernel prints each 4-byte group as a host-order integer, so the
     // native-endian bytes are the original address bytes.
     Ok(raw.to_ne_bytes())
@@ -93,15 +88,14 @@ fn parse_hex_to_ipv4(address: &str) -> Result<Ipv4Addr, ParseError> {
 
 fn parse_hex_to_ipv6(address: &str) -> Result<Ipv6Addr, ParseError> {
     if !address.is_ascii() || address.len() != 32 {
-        return Err(ParseError::BadNumber {
-            field: "address",
-            text: address.to_string(),
-        });
+        return Err(ParseError::BadAddress(address.to_string()));
     }
     let mut bytes = [0u8; 16];
     for i in 0..4 {
         // The ASCII and length checks above mean this slice cannot split a character.
-        let group = decode_group(&address[i * 8..(i + 1) * 8])?;
+        // Report the whole address, not just the 8-character group that failed.
+        let group = decode_group(&address[i * 8..(i + 1) * 8])
+            .map_err(|_| ParseError::BadAddress(address.to_string()))?;
         bytes[i * 4..(i + 1) * 4].copy_from_slice(&group);
     }
     Ok(Ipv6Addr::from(bytes))
@@ -117,7 +111,7 @@ pub fn text_to_entries(text: &str) -> Vec<TcpEntry> {
         .filter_map(|line| match parse_socket(line) {
             Ok(entry) => Some(entry),
             Err(err) => {
-                eprintln!("skipping {}: {err:?}", line.trim());
+                eprintln!("skipping {}: {err}", line.trim());
                 None
             }
         })
@@ -277,10 +271,7 @@ mod tests {
     fn ipv4_rejects_non_hex() {
         assert_eq!(
             parse_hex_to_ipv4("ZZZZZZZZ"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("ZZZZZZZZ"),
-            })
+            Err(ParseError::BadAddress(String::from("ZZZZZZZZ")))
         );
     }
 
@@ -314,10 +305,7 @@ mod tests {
     fn ipv6_rejects_wrong_length() {
         assert_eq!(
             parse_hex_to_ipv6("00000"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("00000")
-            })
+            Err(ParseError::BadAddress(String::from("00000")))
         );
     }
 
@@ -325,10 +313,9 @@ mod tests {
     fn ipv6_rejects_non_hex() {
         assert_eq!(
             parse_hex_to_ipv6("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("ZZZZZZZZ")
-            })
+            Err(ParseError::BadAddress(String::from(
+                "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+            )))
         );
     }
 
@@ -338,10 +325,7 @@ mod tests {
         let text = "é".repeat(16);
         assert_eq!(
             parse_hex_to_ipv6(&text),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: text.clone()
-            })
+            Err(ParseError::BadAddress(text.clone()))
         );
     }
 
@@ -366,10 +350,7 @@ mod tests {
     fn hex_address_rejects_other_lengths() {
         assert_eq!(
             parse_hex_address("0100007"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("0100007")
-            })
+            Err(ParseError::BadAddress(String::from("0100007")))
         );
     }
 

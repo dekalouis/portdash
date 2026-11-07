@@ -38,8 +38,7 @@ fn main() {
         let entries = match parse_lsof(&lsof_text) {
             Ok(entries) => entries,
             Err(err) => {
-                // TODO: {:?} is development output. Replace it (Stage 8a).
-                eprintln!("could not parse sockets: {err:?}");
+                eprintln!("could not parse sockets: {err}");
                 std::process::exit(1);
             }
         };
@@ -49,6 +48,7 @@ fn main() {
 
         for listener in &listeners {
             let socket_address = SocketAddr::new(listener.address, listener.port);
+            // TODO: the PID list is development output. Stage 9 replaces it with a table.
             println!("{}: {:?}", socket_address, listener.pids);
         }
         println!("count {}, actual {}", socket_lines, entries.len());
@@ -86,6 +86,7 @@ fn main() {
             if listener.pids.is_empty() {
                 println!("{}: -", socket_address);
             } else {
+                // TODO: the PID list is development output. Stage 9 replaces it with a table.
                 println!("{}: {:?}", socket_address, listener.pids);
             }
             for &pid in &listener.pids {

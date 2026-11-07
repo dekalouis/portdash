@@ -60,7 +60,7 @@ pub fn parse_lsof(text: &str) -> Result<Vec<LsofEntry>, ParseError> {
                 let (address, port) = match parse_endpoint(value, &family) {
                     Ok(endpoint) => endpoint,
                     Err(err) => {
-                        eprintln!("skipping {value}: {err:?}");
+                        eprintln!("skipping {value}: {err}");
                         continue;
                     }
                 };
@@ -112,25 +112,18 @@ fn parse_lsof_address(text: &str, family: &str) -> Result<IpAddr, ParseError> {
         match family {
             "IPv4" => Ok(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             "IPv6" => Ok(IpAddr::V6(Ipv6Addr::UNSPECIFIED)),
-            _ => Err(ParseError::BadNumber {
-                field: "address",
-                text: family.to_string(),
-            }),
+            _ => Err(ParseError::UnknownFamily(family.to_string())),
         }
     } else {
         let trimmed = match text.strip_prefix("[") {
             Some(rest) => rest
                 .strip_suffix("]")
-                .ok_or_else(|| ParseError::BadNumber {
-                    field: "address",
-                    text: text.to_string(),
-                })?,
+                .ok_or_else(|| ParseError::BadAddress(text.to_string()))?,
             None => text,
         };
-        trimmed.parse().map_err(|_| ParseError::BadNumber {
-            field: "address",
-            text: text.to_string(),
-        })
+        trimmed
+            .parse()
+            .map_err(|_| ParseError::BadAddress(text.to_string()))
     }
 }
 
@@ -386,10 +379,7 @@ mod tests {
     fn rejects_a_bad_address() {
         assert_eq!(
             parse_lsof_address("not-an-address", "IPv4"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("not-an-address")
-            })
+            Err(ParseError::BadAddress(String::from("not-an-address")))
         );
     }
 
@@ -405,10 +395,7 @@ mod tests {
     fn rejects_unknown_family() {
         assert_eq!(
             parse_lsof_address("*", "IPv5"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("IPv5")
-            })
+            Err(ParseError::UnknownFamily(String::from("IPv5")))
         );
     }
 
@@ -440,10 +427,7 @@ mod tests {
     fn rejects_missing_bracket() {
         assert_eq!(
             parse_lsof_address("[::1", "IPv6"),
-            Err(ParseError::BadNumber {
-                field: "address",
-                text: String::from("[::1")
-            })
+            Err(ParseError::BadAddress(String::from("[::1")))
         );
     }
 }

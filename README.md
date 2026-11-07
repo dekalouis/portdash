@@ -14,13 +14,14 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 6: map sockets to PIDs (Linux scans `/proc/<pid>/fd` and matches `ss -ltnp`, macOS groups the `lsof` records by socket). A forked server shows both PIDs on both
 - [x] Stage 7: read process details (Linux reads `/proc/<pid>/stat`, `cmdline` and `cwd` and shows name, command and working directory under each listener. macOS not done yet)
 - [x] Stage 8: detect the project (Linux walks up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`, stops before `$HOME`, and shows the folder name as the last column. macOS not done yet)
+- [x] Stage 8a: readable errors (`ParseError` implements `Display` and `Error`, with a separate variant for bad addresses, and warnings print with `{}` instead of `{:?}`)
 
 ### Progress per device
 
 | Device | Last finished stage |
 |---|---|
 | macOS | Stage 6 |
-| Linux | Stage 8 |
+| Linux | Stage 8a |
 
 ## Run
 
@@ -41,4 +42,4 @@ cargo test
 
 ## Debug output
 
-Some output is temporary for now. On macOS, the warning for a skipped socket still prints with `{:?}`, Rust's `Debug` format, which is meant for me. The Linux PID list (`[1234, 1235]`) is also temporary. Parse errors have no readable message yet. Stage 8a of the guide replaces both with proper `Display` messages.
+Errors read as sentences that name the input, like `skipping <line>: uid is not a valid number: "abc"`. The PID list after each address (`[1234, 1235]`) is still Rust's `Debug` format and is temporary until Stage 9 replaces it with a table.
