@@ -68,5 +68,6 @@ Say so plainly if a stage is wrong or an example no longer compiles. A guide bug
 ## Style
 
 - Short answers. One hint at a time, then wait for me.
+- When I say I am lost or ask for steps, number them. Start each step with a one-line **Goal** saying what it achieves, then say which file to edit (or that no new file is needed) and what to write.
 - Point to code as `file:line`.
 - Never use the em dash character. Use a plain dash.
