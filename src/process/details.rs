@@ -1,5 +1,7 @@
 #![cfg(target_os = "linux")]
 
+use std::{fs, path::PathBuf};
+
 /// Splits the NUL-separated bytes of `/proc/<pid>/cmdline` into arguments.
 ///
 /// The bytes may not be valid UTF-8, so invalid parts are replaced, not rejected.
@@ -12,13 +14,13 @@ fn parse_cmdline(bytes: &[u8]) -> Vec<String> {
 }
 
 /// The fields of `/proc/<pid>/stat` that portdash uses.
-struct Stat {
+pub struct Stat {
     /// Process name from inside the parentheses. The kernel cuts it at 15 characters.
-    name: String,
+    pub name: String,
     /// Parent process ID (field 4).
-    parent_pid: u32,
+    pub parent_pid: u32,
     /// Start time in clock ticks since boot (field 22).
-    start_time: u64,
+    pub start_time: u64,
 }
 
 /// Parses the text of `/proc/<pid>/stat`.
@@ -36,6 +38,34 @@ fn parse_stat(text: &str) -> Option<Stat> {
         name: name.to_string(),
         parent_pid: fields.get(1)?.parse().ok()?,
         start_time: fields.get(19)?.parse().ok()?,
+    })
+}
+
+/// Everything portdash knows about one process, gathered from `/proc/<pid>`.
+pub struct ProcessDetails {
+    pub stat: Stat,
+    pub pid: u32,
+    pub cmdline: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
+/// Reads the details of one process from `/proc/<pid>`.
+///
+/// Returns `None` if `stat` or `cmdline` cannot be read or parsed, which usually
+/// means the process has exited. An unreadable working directory is not an error
+/// and leaves `cwd` as `None`.
+pub fn read_details(pid: u32) -> Option<ProcessDetails> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let parsed = parse_stat(&stat)?;
+    let bytes = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    let cmdline = parse_cmdline(&bytes);
+    let cwd = fs::read_link(format!("/proc/{pid}/cwd")).ok();
+
+    Some(ProcessDetails {
+        stat: parsed,
+        pid,
+        cmdline,
+        cwd,
     })
 }
 
@@ -97,5 +127,19 @@ mod tests {
     fn rejects_a_non_numeric_parent_pid() {
         let text = format!("1 (bash) {}", REST.replacen("762077", "abc", 1));
         assert!(parse_stat(&text).is_none());
+    }
+
+    #[test]
+    fn reads_our_own_process() {
+        let details = read_details(std::process::id()).unwrap();
+        assert_eq!(details.pid, std::process::id());
+        assert_eq!(details.cwd, Some(std::env::current_dir().unwrap()));
+        assert!(!details.cmdline.is_empty());
+    }
+
+    // u32::MAX is above the kernel's PID limit, so no such process can exist
+    #[test]
+    fn returns_none_for_a_missing_process() {
+        assert!(read_details(u32::MAX).is_none());
     }
 }

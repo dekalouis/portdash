@@ -10,6 +10,9 @@ mod macos;
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
+#[cfg(target_os = "linux")]
+pub use details::*;
+
 #[cfg(target_os = "macos")]
 pub use macos::*;
 
