@@ -2,10 +2,10 @@
 use crate::parse::parse_lsof;
 #[cfg(target_os = "linux")]
 use crate::parse::{filter_listeners, text_to_entries};
-#[cfg(target_os = "linux")]
-use crate::process::attach_owners;
 #[cfg(target_os = "macos")]
 use crate::process::group_into_listeners;
+#[cfg(target_os = "linux")]
+use crate::process::{attach_owners, read_details};
 #[cfg(target_os = "linux")]
 use crate::sockets::read_socket_tables;
 #[cfg(target_os = "macos")]
@@ -79,6 +79,24 @@ fn main() {
                 println!("{}: -", socket_address);
             } else {
                 println!("{}: {:?}", socket_address, listener.pids);
+            }
+            for &pid in &listener.pids {
+                let Some(details) = read_details(pid) else {
+                    continue;
+                };
+
+                let command_text = details.cmdline.join(" ");
+                let command = if command_text.is_empty() {
+                    format!("[{}]", details.stat.name)
+                } else {
+                    command_text
+                };
+
+                let cwd = match &details.cwd {
+                    Some(path) => path.display().to_string(),
+                    None => "-".to_string(),
+                };
+                println!("    {} {} {} {}", pid, details.stat.name, command, cwd);
             }
         }
         println!("count {}", listeners.len());
