@@ -1,11 +1,27 @@
 #![cfg(target_os = "linux")]
 use std::{collections::HashMap, fs, io};
 
+use super::Listener;
+use crate::parse::TcpEntry;
+
+/// Pairs each socket with the PIDs that hold it, using one scan of `/proc`.
+pub fn attach_owners(entries: &[TcpEntry]) -> io::Result<Vec<Listener>> {
+    let owners = socket_owners()?;
+    Ok(entries
+        .iter()
+        .map(|entry| Listener {
+            address: entry.address,
+            port: entry.port,
+            pids: owners.get(&entry.inode).cloned().unwrap_or_default(),
+        })
+        .collect())
+}
+
 /// Scans `/proc/<pid>/fd` and maps each socket inode to the PIDs holding it.
 ///
 /// Processes that cannot be read (other users, or already exited) are skipped,
 /// so their sockets simply have no entry. Fails only if `/proc` itself is unreadable.
-pub fn socket_owners() -> io::Result<HashMap<u64, Vec<u32>>> {
+fn socket_owners() -> io::Result<HashMap<u64, Vec<u32>>> {
     let mut found: HashMap<u64, Vec<u32>> = HashMap::new();
 
     for entry in fs::read_dir("/proc")? {
@@ -111,5 +127,23 @@ mod tests {
         let _copy = listener.try_clone().unwrap();
         let owners = socket_owners().unwrap();
         assert_eq!(owners[&inode_of(&listener)], [std::process::id()]);
+    }
+
+    // u64::MAX stands in for a socket whose owner cannot be read
+    #[test]
+    fn attaches_owners_and_leaves_unknown_empty() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let local = listener.local_addr().unwrap();
+        let entry = |inode| TcpEntry {
+            address: local.ip(),
+            port: local.port(),
+            state: 0x0A,
+            uid: 0,
+            inode,
+        };
+
+        let listeners = attach_owners(&[entry(inode_of(&listener)), entry(u64::MAX)]).unwrap();
+        assert_eq!(listeners[0].pids, [std::process::id()]);
+        assert!(listeners[1].pids.is_empty());
     }
 }
