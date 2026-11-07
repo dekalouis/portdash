@@ -1,6 +1,6 @@
 # Stage 7: Read process details
 
-On a Mac? Also read [this stage's Mac notes](07-process-details-mac-support.md).
+On a Mac? Also read [this stage&#39;s Mac notes](07-process-details-mac-support.md).
 
 **Goal:** turn a bare PID into something a human recognizes: name, full command, working directory, owner and start time.
 
@@ -8,12 +8,12 @@ On a Mac? Also read [this stage's Mac notes](07-process-details-mac-support.md).
 
 Each process's folder in `/proc` holds what you need:
 
-| Path | What it holds | Format |
-|---|---|---|
-| `/proc/<pid>/comm` | Short process name | Text, ending in a newline |
-| `/proc/<pid>/cmdline` | Full command with arguments | Arguments separated by NUL bytes |
-| `/proc/<pid>/cwd` | Current working directory | Symlink |
-| `/proc/<pid>/stat` | Status numbers (parent PID, start time, ...) | One line of space-separated fields |
+| Path                  | What it holds                                | Format                             |
+| --------------------- | -------------------------------------------- | ---------------------------------- |
+| `/proc/<pid>/comm`    | Short process name                           | Text, ending in a newline          |
+| `/proc/<pid>/cmdline` | Full command with arguments                  | Arguments separated by NUL bytes   |
+| `/proc/<pid>/cwd`     | Current working directory                    | Symlink                            |
+| `/proc/<pid>/stat`    | Status numbers (parent PID, start time, ...) | One line of space-separated fields |
 
 Look at them for your own shell:
 
@@ -51,7 +51,7 @@ Field numbers are listed in `man 5 proc_pid_stat`, or `man 5 proc` on some syste
 Field 22 is when the process started, in **clock ticks since boot**. It does two jobs:
 
 1. **Uptime.** Current uptime (the first number in `/proc/uptime`) minus start time gives how long the process has been running. Ticks convert to seconds using the system tick rate, normally 100 per second, which you can read with `nix::unistd::sysconf(SysconfVar::CLK_TCK)`.
-2. **Identity.** PIDs get reused. Once a process exits, its number can go to something new. But the pair of *(PID, start time)* really does identify one specific process. That prevents a very bad bug in Stage 10.
+2. **Identity.** PIDs get reused. Once a process exits, its number can go to something new. But the pair of _(PID, start time)_ really does identify one specific process. That prevents a very bad bug in Stage 10.
 
 ### Owner
 

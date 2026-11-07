@@ -13,13 +13,14 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 5: add IPv6 (Linux merges `/proc/net/tcp6` and matches `ss -ltn`, macOS gets it from the same `lsof` call and matches `lsof -nP -iTCP -sTCP:LISTEN`)
 - [x] Stage 6: map sockets to PIDs (Linux scans `/proc/<pid>/fd` and matches `ss -ltnp`, macOS groups the `lsof` records by socket). A forked server shows both PIDs on both
 - [x] Stage 7: read process details (Linux reads `/proc/<pid>/stat`, `cmdline` and `cwd` and shows name, command and working directory under each listener. macOS not done yet)
+- [x] Stage 8: detect the project (Linux walks up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`, stops before `$HOME`, and shows the folder name as the last column. macOS not done yet)
 
 ### Progress per device
 
 | Device | Last finished stage |
 |---|---|
 | macOS | Stage 6 |
-| Linux | Stage 7 |
+| Linux | Stage 8 |
 
 ## Run
 
@@ -29,7 +30,10 @@ cargo run
 
 On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. It prints each listening socket as `address:port: [pids]`, sorted by port, with IPv6 in brackets, like `[::1]:6379: [1593]`. Without `sudo`, only your own user's ports are visible, so other users' ports are missing from the list instead of showing an unknown owner. On my machine that hides Postgres on 5432 and `launchd` on 8021. (I don't feel it's worth the trouble writing unsafe code for a dev server dashboard :P)
 
-On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine) and prints each listening socket as `address:port: [pids]`, sorted by port. IPv6 addresses are written in brackets, like `[::1]:5432`. The owner PIDs come from scanning `/proc/<pid>/fd`. Under each listener, every owner gets an indented line with its PID, name, full command and working directory, like `1042011 python3 python3 -m http.server 8765 --bind 127.0.0.1 /tmp`. A process with an empty command (a kernel thread) shows its name in brackets, and an unreadable working directory shows `-`. Without `sudo` you can only read your own processes, so other users' ports show `-` instead of a PID. Run the tests with:
+On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine) and prints each listening socket as `address:port: [pids]`, sorted by port. IPv6 addresses are written in brackets, like `[::1]:5432`. The owner PIDs come from scanning `/proc/<pid>/fd`. Under each listener, every owner gets an indented line with its PID, name, full command and working directory, like `1042011 python3 python3 -m http.server 8765 --bind 127.0.0.1 /tmp/demo-app/src demo-app`. A process with an empty command (a kernel thread) shows its name in brackets, and an unreadable working directory shows `-`. Without `sudo` you can only read your own processes, so other users' ports show `-` instead of a PID. 
+NOTE: The last column of each owner line is the project, found by walking up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`. It shows `-` when there is none. The walk stops before your home folder, so home itself is never a project. Known limit: home is read from `$HOME`, which is the home of the user running portdash and not of each process owner. Under `sudo` that is `/root`, so `/home/<user>` is not protected and a marker directly in it would label processes running there. 
+
+Run the tests with:
 
 ```sh
 cargo test

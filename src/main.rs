@@ -12,8 +12,12 @@ use crate::sockets::read_socket_tables;
 use crate::sockets::run_lsof;
 use std::net::SocketAddr;
 
+use crate::project::find_project;
+use std::path::PathBuf;
+
 mod parse;
 mod process;
+mod project;
 mod sockets;
 
 fn main() {
@@ -73,6 +77,10 @@ fn main() {
         };
         listeners.sort_by_key(|listener| listener.port);
 
+        // Known limit: this is the home of the user running portdash, not of each process owner.
+        // Under sudo it is /root, so /home/<user> is no longer protected from being labelled a project.
+        let home = std::env::var("HOME").ok().map(PathBuf::from);
+
         for listener in &listeners {
             let socket_address = SocketAddr::new(listener.address, listener.port);
             if listener.pids.is_empty() {
@@ -96,7 +104,18 @@ fn main() {
                     Some(path) => path.display().to_string(),
                     None => "-".to_string(),
                 };
-                println!("    {} {} {} {}", pid, details.stat.name, command, cwd);
+
+                let project = match &details.cwd {
+                    Some(path) => match find_project(path, home.as_deref()) {
+                        Some((_, name)) => name,
+                        None => "-".to_string(),
+                    },
+                    None => "-".to_string(),
+                };
+                println!(
+                    "   {} {} {} {} {}",
+                    pid, details.stat.name, command, cwd, project
+                );
             }
         }
         println!("count {}", listeners.len());

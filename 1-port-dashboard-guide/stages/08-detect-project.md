@@ -1,6 +1,6 @@
 # Stage 8: Detect the project
 
-On a Mac? Also read [this stage's Mac notes](08-detect-project-mac-support.md).
+On a Mac? Also read [this stage&#39;s Mac notes](08-detect-project-mac-support.md).
 
 **Goal:** label each listener with the project it belongs to. This is what makes your tool different from `lsof`.
 
@@ -14,16 +14,16 @@ On a Mac? Also read [this stage's Mac notes](08-detect-project-mac-support.md).
 
 You have a working directory from Stage 7. A dev server normally runs from inside its project, so walk up the folder tree looking for a file that marks a project root:
 
-| Marker | Project type |
-|---|---|
-| `.git` | Any git repository |
-| `package.json` | JavaScript / TypeScript |
-| `Cargo.toml` | Rust |
-| `pyproject.toml`, `requirements.txt` | Python |
-| `go.mod` | Go |
-| `composer.json` | PHP |
-| `Gemfile` | Ruby |
-| `pom.xml`, `build.gradle` | Java |
+| Marker                               | Project type            |
+| ------------------------------------ | ----------------------- |
+| `.git`                               | Any git repository      |
+| `package.json`                       | JavaScript / TypeScript |
+| `Cargo.toml`                         | Rust                    |
+| `pyproject.toml`, `requirements.txt` | Python                  |
+| `go.mod`                             | Go                      |
+| `composer.json`                      | PHP                     |
+| `Gemfile`                            | Ruby                    |
+| `pom.xml`, `build.gradle`            | Java                    |
 
 Given `/home/you/shop/frontend/src`, check `src`, then `frontend`, and so on up. `Path::ancestors()` gives you exactly this walk.
 
