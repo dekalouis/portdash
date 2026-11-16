@@ -1,15 +1,15 @@
 #![cfg(target_os = "linux")]
 use std::{collections::HashMap, fs, io};
 
-use super::Listener;
+use super::Socket;
 use crate::parse::TcpEntry;
 
 /// Pairs each socket with the PIDs that hold it, using one scan of `/proc`.
-pub fn attach_owners(entries: &[TcpEntry]) -> io::Result<Vec<Listener>> {
+pub fn attach_owners(entries: &[TcpEntry]) -> io::Result<Vec<Socket>> {
     let owners = socket_owners()?;
     Ok(entries
         .iter()
-        .map(|entry| Listener {
+        .map(|entry| Socket {
             address: entry.address,
             port: entry.port,
             pids: owners.get(&entry.inode).cloned().unwrap_or_default(),

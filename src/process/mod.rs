@@ -20,7 +20,7 @@ use std::net::IpAddr;
 
 /// One listening socket and the processes that hold it, the same on every platform.
 #[derive(PartialEq, Debug)]
-pub struct Listener {
+pub struct Socket {
     /// Local IP address, IPv4 or IPv6.
     pub address: IpAddr,
     /// Local port.

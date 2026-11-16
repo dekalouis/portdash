@@ -1,14 +1,14 @@
 #![cfg(target_os = "macos")]
 use std::net::IpAddr;
 
-use super::Listener;
+use super::Socket;
 use crate::parse::LsofEntry;
 
 /// Turns one record per process per socket into one listener per socket,
 /// keyed by socket ID, address and port, with the PIDs that own it.
 /// The PIDs keep the order `lsof` printed them in.
-pub fn group_into_listeners(entries: &[LsofEntry]) -> Vec<Listener> {
-    let mut seen: Vec<((String, IpAddr, u16), Listener)> = Vec::new();
+pub fn group_into_listeners(entries: &[LsofEntry]) -> Vec<Socket> {
+    let mut seen: Vec<((String, IpAddr, u16), Socket)> = Vec::new();
     for entry in entries {
         let key = (entry.socket_id.clone(), entry.address, entry.port);
         match seen.iter_mut().find(|(k, _)| *k == key) {
@@ -19,7 +19,7 @@ pub fn group_into_listeners(entries: &[LsofEntry]) -> Vec<Listener> {
             }
             None => seen.push((
                 key,
-                Listener {
+                Socket {
                     address: entry.address,
                     port: entry.port,
                     pids: vec![entry.pid],
@@ -58,7 +58,7 @@ mod tests {
         ]);
         assert_eq!(
             listeners,
-            [Listener {
+            [Socket {
                 address: local,
                 port: 8767,
                 pids: vec![100, 200],
@@ -75,7 +75,7 @@ mod tests {
         ]);
         assert_eq!(
             listeners,
-            [Listener {
+            [Socket {
                 address: local,
                 port: 8767,
                 pids: vec![100],
