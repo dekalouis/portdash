@@ -7,6 +7,7 @@ use crate::scan::scan;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
 use clap::{Parser, Subcommand};
+use std::io::{self, Write};
 #[cfg(target_os = "macos")]
 use std::net::SocketAddr;
 
@@ -35,9 +36,17 @@ enum Command {
 
 fn main() {
     let cli = Cli::parse();
-    match cli.command {
+    let result = match cli.command {
         Some(Command::List { json }) => print_list(json),
         None => print_list(false),
+    };
+
+    if let Err(err) = result {
+        if err.kind() == io::ErrorKind::BrokenPipe {
+            return;
+        }
+        eprintln!("could not write output: {err}");
+        std::process::exit(1);
     }
 }
 
@@ -75,7 +84,7 @@ fn print_list(_json: bool) {
 }
 
 #[cfg(target_os = "linux")]
-fn print_list(json: bool) {
+fn print_list(json: bool) -> io::Result<()> {
     let listeners = match scan() {
         Ok(list) => list,
         Err(err) => {
@@ -84,15 +93,22 @@ fn print_list(json: bool) {
         }
     };
 
+    let mut out = io::stdout().lock();
+
     if json {
         match serde_json::to_string_pretty(&listeners) {
-            Ok(text) => println!("{text}"),
+            Ok(text) => writeln!(out, "{text}")?,
             Err(err) => {
                 eprintln!("could not write JSON: {err}");
                 std::process::exit(1);
             }
         }
-        return;
+        return Ok(());
+    }
+
+    if listeners.is_empty() {
+        writeln!(out, "nothing is listening!")?;
+        return Ok(());
     }
 
     let mut rows: Vec<[String; 5]> = Vec::new();
@@ -125,7 +141,6 @@ fn print_list(json: bool) {
             project,
         ]);
     }
-    // dbg!(&rows);
 
     let header = ["PORT", "ADDRESS", "PID", "PROCESS", "PROJECT"].map(String::from);
 
@@ -142,7 +157,17 @@ fn print_list(json: bool) {
             .zip(widths)
             .map(|(text, width)| format!("{text:<width$}"))
             .collect();
-        println!("{}", line.join("  ").trim_end());
+        writeln!(out, "{}", line.join("  ").trim_end())?;
     }
-    println!("count {}", listeners.len());
+
+    let unknown = listeners
+        .iter()
+        .filter(|listener| listener.owners.is_empty())
+        .count();
+    if unknown == 1 {
+        eprintln!("1 port has an unknown owner (try sudo)");
+    } else if unknown > 1 {
+        eprintln!("{} ports have unknown owners (try sudo)", unknown);
+    }
+    Ok(())
 }
