@@ -1,5 +1,6 @@
 #![cfg(target_os = "linux")]
 
+use serde::Serialize;
 use std::{io, net::IpAddr, path::PathBuf};
 
 use crate::{
@@ -10,6 +11,7 @@ use crate::{
 };
 
 /// One process holding a listening socket.
+#[derive(Serialize)]
 pub struct Owner {
     pub pid: u32,
     /// Process name from `/proc/<pid>/stat`, cut at 15 characters by the kernel.
@@ -21,6 +23,7 @@ pub struct Owner {
 }
 
 /// One listening socket with everything portdash knows about it.
+#[derive(Serialize)]
 pub struct Listener {
     pub address: IpAddr,
     pub port: u16,

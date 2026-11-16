@@ -7,6 +7,7 @@ use crate::scan::scan;
 #[cfg(target_os = "macos")]
 use crate::sockets::run_lsof;
 use clap::{Parser, Subcommand};
+#[cfg(target_os = "macos")]
 use std::net::SocketAddr;
 
 mod parse;
@@ -74,7 +75,7 @@ fn print_list(_json: bool) {
 }
 
 #[cfg(target_os = "linux")]
-fn print_list(_json: bool) {
+fn print_list(json: bool) {
     let listeners = match scan() {
         Ok(list) => list,
         Err(err) => {
@@ -83,30 +84,65 @@ fn print_list(_json: bool) {
         }
     };
 
+    if json {
+        match serde_json::to_string_pretty(&listeners) {
+            Ok(text) => println!("{text}"),
+            Err(err) => {
+                eprintln!("could not write JSON: {err}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    let mut rows: Vec<[String; 5]> = Vec::new();
+
     for listener in &listeners {
-        let socket_address = SocketAddr::new(listener.address, listener.port);
+        let pid = match listener.owners.first() {
+            None => "-".to_string(),
+            Some(first) => {
+                let others = listener.owners.len() - 1;
+                if others == 0 {
+                    first.pid.to_string()
+                } else {
+                    format!("{} +{}", first.pid, others)
+                }
+            }
+        };
 
-        let pids: Vec<u32> = listener.owners.iter().map(|owner| owner.pid).collect();
-        if pids.is_empty() {
-            println!("{}: -", socket_address);
-        } else {
-            // TODO: the PID list is development output. Stage 9 replaces it with a table.
-            println!("{}: {:?}", socket_address, pids);
+        let process = match listener.owners.first() {
+            None => "-".to_string(),
+            Some(first) => first.name.clone(),
+        };
+
+        let project = listener.project.as_deref().unwrap_or("-").to_string();
+
+        rows.push([
+            listener.port.to_string(),
+            listener.address.to_string(),
+            pid,
+            process,
+            project,
+        ]);
+    }
+    // dbg!(&rows);
+
+    let header = ["PORT", "ADDRESS", "PID", "PROCESS", "PROJECT"].map(String::from);
+
+    let mut widths = header.clone().map(|text| text.len());
+    for row in &rows {
+        for (column, text) in row.iter().enumerate() {
+            widths[column] = widths[column].max(text.len());
         }
+    }
 
-        let project = listener.project.as_deref().unwrap_or("-");
-
-        for owner in &listener.owners {
-            let cwd = match &owner.cwd {
-                Some(path) => path.display().to_string(),
-                None => "-".to_string(),
-            };
-
-            println!(
-                "   {} {} {} {} {}",
-                owner.pid, owner.name, owner.command, cwd, project
-            );
-        }
+    for row in std::iter::once(&header).chain(&rows) {
+        let line: Vec<String> = row
+            .iter()
+            .zip(widths)
+            .map(|(text, width)| format!("{text:<width$}"))
+            .collect();
+        println!("{}", line.join("  ").trim_end());
     }
     println!("count {}", listeners.len());
 }
