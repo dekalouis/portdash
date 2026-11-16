@@ -15,24 +15,39 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 7: read process details (Linux reads `/proc/<pid>/stat`, `cmdline` and `cwd` and shows name, command and working directory under each listener. macOS not done yet)
 - [x] Stage 8: detect the project (Linux walks up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`, stops before `$HOME`, and shows the folder name as the last column. macOS not done yet)
 - [x] Stage 8a: readable errors (`ParseError` implements `Display` and `Error`, with a separate variant for bad addresses, and warnings print with `{}` instead of `{:?}`)
+- [x] Stage 9: the list command (`portdash list` prints an aligned table with one row per socket, `--json` prints the full data, a footer counts ports with unknown owners, and a closed pipe exits quietly. macOS not done yet)
 
 ### Progress per device
 
 | Device | Last finished stage |
 |---|---|
 | macOS | Stage 6 |
-| Linux | Stage 8a |
+| Linux | Stage 9 |
 
 ## Run
 
 ```sh
-cargo run
+cargo run -- list
+cargo run -- list --json
+cargo run -- --help
 ```
 
 On macOS this runs `/usr/sbin/lsof`, so no extra install is needed. It prints each listening socket as `address:port: [pids]`, sorted by port, with IPv6 in brackets, like `[::1]:6379: [1593]`. Without `sudo`, only your own user's ports are visible, so other users' ports are missing from the list instead of showing an unknown owner. On my machine that hides Postgres on 5432 and `launchd` on 8021. (I don't feel it's worth the trouble writing unsafe code for a dev server dashboard :P)
 
-On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine) and prints each listening socket as `address:port: [pids]`, sorted by port. IPv6 addresses are written in brackets, like `[::1]:5432`. The owner PIDs come from scanning `/proc/<pid>/fd`. Under each listener, every owner gets an indented line with its PID, name, full command and working directory, like `1042011 python3 python3 -m http.server 8765 --bind 127.0.0.1 /tmp/demo-app/src demo-app`. A process with an empty command (a kernel thread) shows its name in brackets, and an unreadable working directory shows `-`. Without `sudo` you can only read your own processes, so other users' ports show `-` instead of a PID. 
-NOTE: The last column of each owner line is the project, found by walking up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`. It shows `-` when there is none. The walk stops before your home folder, so home itself is never a project. Known limit: home is read from `$HOME`, which is the home of the user running portdash and not of each process owner. Under `sudo` that is `/root`, so `/home/<user>` is not protected and a marker directly in it would label processes running there. 
+On Linux it reads `/proc/net/tcp` and `/proc/net/tcp6` (a missing `tcp6` file is fine), finds each socket's owners by scanning `/proc/<pid>/fd`, and prints one row per listening socket, sorted by port:
+
+```
+PORT   ADDRESS     PID         PROCESS  PROJECT
+5432   ::1         -           -        -
+8765   127.0.0.1   1948479     python3  demo-app
+8767   127.0.0.1   2460215 +3  python3  portdash
+```
+
+When several processes share a socket (a forked server), the row shows the first PID and `+N` for the others. The project is found by walking up from the owner's working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`. The walk stops before your home folder, so home itself is never a project. Known limit: home is read from `$HOME`, which is the home of the user running portdash and not of each process owner. Under `sudo` that is `/root`, so `/home/<user>` is not protected and a marker directly in it would label processes running there.
+
+`--json` prints every socket with its address, port, project and owners. Each owner has its PID, name, full command and working directory, with `null` for anything unknown. The full command is left out of the table because it can run to thousands of characters.
+
+Without `sudo` you can only read your own processes, so other users' sockets show `-` and a footer on stderr says how many, like `11 ports have unknown owners (try sudo)`. Results go to stdout and messages to stderr, so `portdash list --json | jq` stays clean, and `portdash list | head -1` exits quietly instead of panicking on the closed pipe.
 
 Run the tests with:
 
@@ -42,4 +57,4 @@ cargo test
 
 ## Debug output
 
-Errors read as sentences that name the input, like `skipping <line>: uid is not a valid number: "abc"`. The PID list after each address (`[1234, 1235]`) is still Rust's `Debug` format and is temporary until Stage 9 replaces it with a table.
+Errors read as sentences that name the input, like `skipping <line>: uid is not a valid number: "abc"`. On macOS the PID list after each address (`[1234, 1235]`) is still Rust's `Debug` format and is temporary until its side of Stage 9 replaces it with a table.

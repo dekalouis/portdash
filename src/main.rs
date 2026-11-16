@@ -51,7 +51,7 @@ fn main() {
 }
 
 #[cfg(target_os = "macos")]
-fn print_list(_json: bool) {
+fn print_list(_json: bool) -> io::Result<()> {
     let lsof_text = match run_lsof() {
         Ok(text) => text,
         Err(err) => {
@@ -81,6 +81,7 @@ fn print_list(_json: bool) {
         println!("{}: {:?}", socket_address, listener.pids);
     }
     println!("count {}, actual {}", socket_lines, entries.len());
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -147,7 +148,10 @@ fn print_list(json: bool) -> io::Result<()> {
     let mut widths = header.clone().map(|text| text.len());
     for row in &rows {
         for (column, text) in row.iter().enumerate() {
-            widths[column] = widths[column].max(text.len());
+            // chars().count() matches how format! pads, so accented names like "café" line up.
+            // TODO: wide characters (CJK, emoji) take two screen columns each and still misalign.
+            // Fix with the unicode-width crate: text.width() here, and pad by hand with " ".repeat(width - text.width()).
+            widths[column] = widths[column].max(text.chars().count());
         }
     }
 
