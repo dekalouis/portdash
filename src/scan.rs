@@ -9,20 +9,31 @@ use crate::{
     sockets::read_socket_tables,
 };
 
+/// One process holding a listening socket.
 pub struct Owner {
     pub pid: u32,
+    /// Process name from `/proc/<pid>/stat`, cut at 15 characters by the kernel.
     pub name: String,
+    /// Full command line, or the name in brackets when it is empty (kernel threads).
     pub command: String,
+    /// Working directory, or `None` when it cannot be read.
     pub cwd: Option<PathBuf>,
 }
 
+/// One listening socket with everything portdash knows about it.
 pub struct Listener {
     pub address: IpAddr,
     pub port: u16,
+    /// Processes holding the socket. Empty when the owner cannot be read (another user's process).
     pub owners: Vec<Owner>,
+    /// Project of the first owner that has one.
     pub project: Option<String>,
 }
 
+/// Reads every listening TCP socket with its owners and project, sorted by port.
+///
+/// An owner that exits during the scan is left out. Returns an error only if the
+/// socket tables or `/proc` itself cannot be read.
 pub fn scan() -> io::Result<Vec<Listener>> {
     let tables = read_socket_tables()?;
     let entries = tables

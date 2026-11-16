@@ -65,6 +65,7 @@ fn main() {
             if pids.is_empty() {
                 println!("{}: -", socket_address);
             } else {
+                // TODO: the PID list is development output. Stage 9 replaces it with a table.
                 println!("{}: {:?}", socket_address, pids);
             }
 

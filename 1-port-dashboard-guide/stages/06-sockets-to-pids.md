@@ -26,10 +26,13 @@ Each entry is a symbolic link. If the link's target looks like `socket:[492943]`
 
 Try it on your test server:
 
+`SERVER=$!` saves the PID on its own line, because zsh reads `$!/fd` or `$!"` as a history command.
+
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1 &
-ls -l /proc/$!/fd
-kill %1
+SERVER=$!
+ls -l /proc/$SERVER/fd
+kill $SERVER
 ```
 
 ### The algorithm
@@ -105,10 +108,11 @@ Useful string helpers: `strip_prefix` and `strip_suffix` return `None` if the te
 
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1 &
-echo "server PID: $!"
+SERVER=$!
+echo "server PID: $SERVER"
 cargo run
 ss -ltnp
-kill %1
+kill $SERVER
 ```
 
 - Your output must show port 8765 with the same PID.
