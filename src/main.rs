@@ -1,3 +1,4 @@
+use crate::kill::kill_port;
 #[cfg(target_os = "macos")]
 use crate::parse::parse_lsof;
 #[cfg(target_os = "macos")]
@@ -11,6 +12,7 @@ use std::io::{self, Write};
 #[cfg(target_os = "macos")]
 use std::net::SocketAddr;
 
+mod kill;
 mod parse;
 mod process;
 mod project;
@@ -32,12 +34,24 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Stop whatever is listening on a port: SIGTERM first, SIGKILL if it is still alive
+    Kill {
+        /// The port to free
+        port: u16,
+        /// Skip SIGTERM and send SIGKILL right away
+        #[arg(long)]
+        force: bool,
+        /// Do not ask for confirmation
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
         Some(Command::List { json }) => print_list(json),
+        Some(Command::Kill { port, force, yes }) => kill_port(port, force, yes),
         None => print_list(false),
     };
 

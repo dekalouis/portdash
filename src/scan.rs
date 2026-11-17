@@ -20,6 +20,12 @@ pub struct Owner {
     pub command: String,
     /// Working directory, or `None` when it cannot be read.
     pub cwd: Option<PathBuf>,
+    /// Parent process ID, used to find the main process among several owners.
+    pub parent_pid: u32,
+    /// Start time in clock ticks since boot. Checked again before killing, so a reused PID
+    /// is never signalled. Left out of the JSON because it means nothing outside this machine.
+    #[serde(skip)]
+    pub start_time: u64,
 }
 
 /// One listening socket with everything portdash knows about it.
@@ -78,6 +84,8 @@ pub fn scan() -> io::Result<Vec<Listener>> {
                 name: details.stat.name,
                 command,
                 cwd: details.cwd,
+                parent_pid: details.stat.parent_pid,
+                start_time: details.stat.start_time,
             });
         }
         listeners.push(Listener {

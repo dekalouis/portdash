@@ -21,6 +21,8 @@ pub struct Stat {
     pub parent_pid: u32,
     /// Start time in clock ticks since boot (field 22).
     pub start_time: u64,
+    /// Process state (field 3), such as R running, S sleeping or Z zombie.
+    pub state: char,
 }
 
 /// Parses the text of `/proc/<pid>/stat`.
@@ -38,6 +40,7 @@ fn parse_stat(text: &str) -> Option<Stat> {
         name: name.to_string(),
         parent_pid: fields.get(1)?.parse().ok()?,
         start_time: fields.get(19)?.parse().ok()?,
+        state: fields.first()?.chars().next()?,
     })
 }
 
@@ -103,6 +106,7 @@ mod tests {
         assert_eq!(stat.name, "bash");
         assert_eq!(stat.parent_pid, 762077);
         assert_eq!(stat.start_time, 16519640);
+        assert_eq!(stat.state, 'S');
     }
 
     #[test]
