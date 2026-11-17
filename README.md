@@ -16,19 +16,22 @@ Work in progress. I'm building it stage by stage as a way to learn Rust and syst
 - [x] Stage 8: detect the project (Linux walks up from the working directory to the nearest folder with a marker such as `.git`, `package.json` or `Cargo.toml`, stops before `$HOME`, and shows the folder name as the last column. macOS not done yet)
 - [x] Stage 8a: readable errors (`ParseError` implements `Display` and `Error`, with a separate variant for bad addresses, and warnings print with `{}` instead of `{:?}`)
 - [x] Stage 9: the list command (`portdash list` prints an aligned table with one row per socket, `--json` prints the full data, a footer counts ports with unknown owners, and a closed pipe exits quietly. macOS not done yet)
+- [x] Stage 10: the kill command (`portdash kill <port>` asks first, sends SIGTERM to the main process, waits up to 5 seconds, then sends SIGKILL to any owner still alive. It refuses PID 0, 1 and its own, and re-checks the start time so a reused PID is never hit. macOS not done yet)
 
 ### Progress per device
 
 | Device | Last finished stage |
 |---|---|
 | macOS | Stage 6 |
-| Linux | Stage 9 |
+| Linux | Stage 10 |
 
 ## Run
 
 ```sh
 cargo run -- list
 cargo run -- list --json
+cargo run -- kill 8765
+cargo run -- kill 8765 --yes --force
 cargo run -- --help
 ```
 
@@ -48,6 +51,8 @@ When several processes share a socket (a forked server), the row shows the first
 `--json` prints every socket with its address, port, project and owners. Each owner has its PID, name, full command and working directory, with `null` for anything unknown. The full command is left out of the table because it can run to thousands of characters.
 
 Without `sudo` you can only read your own processes, so other users' sockets show `-` and a footer on stderr says how many, like `11 ports have unknown owners (try sudo)`. Results go to stdout and messages to stderr, so `portdash list --json | jq` stays clean, and `portdash list | head -1` exits quietly instead of panicking on the closed pipe.
+
+`kill <port>` lists every process holding the port and asks `stop it? [y/N]` (skip it with `--yes`). It sends SIGTERM to the main process, meaning an owner whose parent is not also an owner, so a server with workers can shut them down itself. If anything is still running after 5 seconds, every remaining owner gets SIGKILL. `--force` sends SIGKILL right away. Before each signal it refuses PID 0, 1 and its own PID, and re-reads the process start time, so a PID that was reused by another process is skipped. A zombie (exited, waiting for its parent) counts as stopped. It exits with 1 if nothing is listening, the owner belongs to another user, or something could not be stopped. Known limit: a PID can still be reused in the tiny gap between the check and the signal, which a pidfd would close.
 
 Run the tests with:
 
